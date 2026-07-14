@@ -1,12 +1,13 @@
 import { usePlanStore } from "./stores/plan";
-import { Sidebar } from "./components/TopBar";
+import { TopBar } from "./components/TopBar";
 import { SetupView } from "./views/SetupView";
 import { ChatView } from "./views/ChatView";
 import { DashboardView } from "./views/DashboardView";
 import { ErrorBanner } from "./components/ErrorBanner";
 
 /**
- * Root application — Jenkins-inspired layout with dark sidebar.
+ * Root application component.
+ * Routes between 3 views based on mission phase.
  */
 export default function App() {
   const phase = usePlanStore((s) => s.phase);
@@ -17,65 +18,50 @@ export default function App() {
   const showDashboard = ["launching", "running", "complete"].includes(phase);
 
   return (
-    <div style={styles.root}>
-      <Sidebar />
-      <div style={styles.main}>
-        {/* Breadcrumb header */}
-        <div style={styles.header}>
-          <span style={styles.breadcrumb}>
-            <span style={styles.breadItem}>Fleet</span>
-            <span style={styles.breadSep}>/</span>
-            <span style={{ ...styles.breadItem, color: "#0f172a", fontWeight: 600 }}>
-              {showSetup && "Setup"}
-              {showChat && "Mission Planner"}
-              {showDashboard && "Dashboard"}
-            </span>
-          </span>
-        </div>
+    <div style={styles.container}>
+      <TopBar />
 
-        {/* Error banner */}
-        {error && <ErrorBanner message={error} />}
+      {error && <ErrorBanner message={error} code={error.toUpperCase().replace(/\s+/g, "_")} />}
 
-        {/* Content */}
-        <div style={styles.content}>
-          {showSetup && <SetupView />}
-          {showChat && <ChatView />}
-          {showDashboard && <DashboardView />}
-        </div>
+      <div style={styles.content}>
+        {showSetup && <SetupView />}
+        {showChat && <ChatView />}
+        {showDashboard && <DashboardView />}
+      </div>
+
+      {/* Bottom Bar */}
+      <div style={styles.bottomBar}>
+        <span style={styles.version}>v1.0</span>
       </div>
     </div>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  root: {
+  container: {
     width: "100vw",
     height: "100vh",
     display: "flex",
-    overflow: "hidden",
-  },
-  main: {
-    flex: 1,
-    display: "flex",
     flexDirection: "column",
-    background: "#f1f5f9",
-    overflow: "hidden",
-  },
-  header: {
-    height: 44,
-    minHeight: 44,
-    display: "flex",
-    alignItems: "center",
-    padding: "0 20px",
     background: "#ffffff",
-    borderBottom: "1px solid #e2e8f0",
+    color: "#1a202c",
   },
-  breadcrumb: { display: "flex", alignItems: "center", gap: 6, fontSize: 12 },
-  breadItem: { color: "#64748b" },
-  breadSep: { color: "#cbd5e1" },
   content: {
     flex: 1,
     overflow: "hidden",
     display: "flex",
+  },
+  bottomBar: {
+    height: 28,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    padding: "0 16px",
+    borderTop: "1px solid #e2e8f0",
+    background: "#f8f9fa",
+  },
+  version: {
+    color: "#a0aec0",
+    fontSize: 11,
   },
 };

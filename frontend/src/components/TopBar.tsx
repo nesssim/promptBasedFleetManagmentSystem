@@ -15,13 +15,7 @@ const PHASE_LABELS: Record<string, string> = {
   error: "Error",
 };
 
-const NAV_ITEMS = [
-  { id: "setup", label: "Setup", icon: "⚙" },
-  { id: "planner", label: "Mission Planner", icon: "📋" },
-  { id: "dashboard", label: "Dashboard", icon: "📊" },
-];
-
-export function Sidebar() {
+export function TopBar() {
   const phase = usePlanStore((s) => s.phase);
   const resetPlan = usePlanStore((s) => s.reset);
   const resetFleet = useFleetStore((s) => s.reset);
@@ -29,187 +23,80 @@ export function Sidebar() {
   const connected = useFleetStore((s) => s.connected);
   const mockMode = useConfigStore((s) => s.mockMode);
 
-  const showSetup = phase === "idle" || phase === "error";
-  const showChat = ["planning", "plan_ready", "generating", "dag_ready"].includes(phase);
-  const showDashboard = ["launching", "running", "complete"].includes(phase);
-
   const handleKill = async () => {
-    try { await postKill(sessionId); } catch { /* force reset */ }
+    try {
+      await postKill(sessionId);
+    } catch {
+      // Ignore — force reset anyway
+    }
     resetPlan();
     resetFleet();
   };
 
   return (
-    <div style={styles.sidebar}>
-      {/* Logo */}
-      <div style={styles.logoArea}>
-        <div style={styles.logoIcon}>
-          <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-            <rect x="2" y="5" width="18" height="11" rx="3" fill="#3b82f6" opacity="0.3" />
-            <circle cx="8" cy="13" r="3" fill="#3b82f6" />
-            <circle cx="14" cy="13" r="3" fill="#3b82f6" />
-          </svg>
-        </div>
-        <div>
-          <div style={styles.logoText}>MissionSwarm</div>
-          <div style={styles.logoSub}>Fleet Manager</div>
-        </div>
+    <div style={styles.bar}>
+      <div style={styles.left}>
+        <span style={styles.logo}>MissionSwarm</span>
+        {mockMode && <span style={styles.mockBadge}>MOCK</span>}
       </div>
-
-      {/* Nav */}
-      <nav style={styles.nav}>
-        <div style={styles.navSection}>Views</div>
-        {NAV_ITEMS.map((item) => {
-          const isActive =
-            (item.id === "setup" && showSetup) ||
-            (item.id === "planner" && showChat) ||
-            (item.id === "dashboard" && showDashboard);
-          return (
-            <div
-              key={item.id}
-              style={{
-                ...styles.navItem,
-                ...(isActive ? styles.navItemActive : {}),
-              }}
-            >
-              <span style={styles.navIcon}>{item.icon}</span>
-              <span>{item.label}</span>
-            </div>
-          );
-        })}
-      </nav>
-
-      {/* Spacer */}
-      <div style={{ flex: 1 }} />
-
-      {/* Status area */}
-      <div style={styles.statusArea}>
-        {mockMode && (
-          <div style={styles.mockBadge}>
-            <span style={styles.mockDot} />
-            MOCK MODE
-          </div>
-        )}
-        <div style={styles.statusRow}>
-          <span
-            style={{
-              ...styles.statusDot,
-              background: connected ? "#16a34a" : "#94a3b8",
-            }}
-          />
-          <span style={styles.statusLabel}>
-            {connected ? "Connected" : "Disconnected"}
-          </span>
-        </div>
-        <div style={styles.phaseRow}>
-          <span style={styles.phaseLabel}>{PHASE_LABELS[phase] || phase}</span>
-        </div>
+      <div style={styles.right}>
+        <span style={styles.phaseLabel}>{PHASE_LABELS[phase] || phase}</span>
+        <span style={{ ...styles.statusDot, background: connected ? "#23a45d" : "#e5484d" }} />
         <button style={styles.killBtn} onClick={handleKill}>
           Kill All
         </button>
       </div>
-
-      {/* Version */}
-      <div style={styles.versionBar}>v1.0.0</div>
     </div>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  sidebar: {
-    width: 220,
-    minWidth: 220,
-    height: "100vh",
-    background: "#1e293b",
-    display: "flex",
-    flexDirection: "column",
-    borderRight: "1px solid #0f172a",
-    overflow: "hidden",
-  },
-  logoArea: {
-    padding: "18px 16px 14px",
+  bar: {
+    height: 52,
     display: "flex",
     alignItems: "center",
-    gap: 10,
-    borderBottom: "1px solid #334155",
+    justifyContent: "space-between",
+    padding: "0 20px",
+    background: "#ffffff",
+    borderBottom: "1px solid #e2e8f0",
   },
-  logoIcon: { display: "flex" },
-  logoText: { color: "#f1f5f9", fontSize: 15, fontWeight: 700, letterSpacing: "-0.01em" },
-  logoSub: { color: "#64748b", fontSize: 10, fontWeight: 500, marginTop: 1 },
-  nav: { padding: "8px 0", flex: 1, overflowY: "auto" },
-  navSection: {
-    padding: "8px 16px 4px",
-    color: "#475569",
-    fontSize: 10,
-    fontWeight: 600,
-    textTransform: "uppercase" as const,
-    letterSpacing: "1px",
-  },
-  navItem: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: "8px 16px",
-    color: "#94a3b8",
-    fontSize: 13,
-    fontWeight: 500,
-    cursor: "default",
-    transition: "all 0.1s",
-  },
-  navItemActive: {
-    color: "#f1f5f9",
-    background: "#334155",
-    borderLeft: "3px solid #3b82f6",
-    paddingLeft: 13,
-  },
-  navIcon: { width: 18, textAlign: "center" as const, fontSize: 13 },
-  statusArea: {
-    padding: "12px 16px",
-    borderTop: "1px solid #334155",
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
-  },
-  mockBadge: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    background: "#422006",
-    color: "#fbbf24",
-    fontSize: 10,
+  left: { display: "flex", alignItems: "center", gap: 12 },
+  right: { display: "flex", alignItems: "center", gap: 14 },
+  logo: {
+    fontSize: 20,
     fontWeight: 700,
-    padding: "3px 8px",
-    borderRadius: 4,
-    letterSpacing: "0.3px",
+    color: "#4f8ef7",
   },
-  mockDot: {
-    width: 6,
-    height: 6,
+  phaseLabel: {
+    fontSize: 12,
+    color: "#718096",
+    fontWeight: 500,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
     borderRadius: "50%",
-    background: "#fbbf24",
+    display: "inline-block",
   },
-  statusRow: { display: "flex", alignItems: "center", gap: 6 },
-  statusDot: { width: 7, height: 7, borderRadius: "50%", display: "inline-block" },
-  statusLabel: { color: "#94a3b8", fontSize: 11, fontWeight: 500 },
-  phaseRow: {},
-  phaseLabel: { color: "#64748b", fontSize: 10 },
   killBtn: {
-    background: "#dc2626",
+    background: "#e5484d",
     color: "#fff",
     border: "none",
-    borderRadius: 4,
-    padding: "5px 12px",
+    borderRadius: 6,
+    padding: "6px 14px",
     fontWeight: 600,
-    fontSize: 11,
+    fontSize: 12,
     cursor: "pointer",
-    marginTop: 2,
     transition: "background 0.15s",
   },
-  versionBar: {
-    padding: "8px 16px",
-    color: "#475569",
+  mockBadge: {
+    background: "#fef3c7",
+    color: "#92400e",
     fontSize: 10,
-    borderTop: "1px solid #334155",
-    textAlign: "center" as const,
+    fontWeight: 700,
+    padding: "2px 8px",
+    borderRadius: 4,
+    letterSpacing: "0.5px",
+    marginLeft: 8,
   },
 };

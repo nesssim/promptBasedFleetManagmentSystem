@@ -3,28 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MissionSwarm R2 · Fleet Manager</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <title>MissionSwarm R2</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body {
-        background: #f1f5f9;
-        color: #0f172a;
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        font-size: 13px;
-        line-height: 1.5;
-        -webkit-font-smoothing: antialiased;
+        background: #ffffff;
+        color: #1a202c;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       }
-      #root { width: 100vw; height: 100vh; display: flex; }
-      input, textarea, button, select { font-family: inherit; font-size: inherit; }
-      ::-webkit-scrollbar { width: 6px; height: 6px; }
-      ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-      ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-      @keyframes slideIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+      #root { width: 100vw; height: 100vh; display: flex; flex-direction: column; }
+      input, textarea, button { font-family: inherit; }
     </style>
   </head>
   <body>
