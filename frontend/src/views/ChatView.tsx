@@ -1,27 +1,34 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { shallow } from "zustand/shallow";
 import { usePlanStore } from "../stores/plan";
 import { useConfigStore } from "../stores/config";
-import { postPlan, postCorrect, postGenerate } from "../api";
+import { postPlan, postCorrect, postGenerate, postLaunch } from "../api";
 import { YardMap } from "../components/YardMap";
 
 /**
  * View 2: Chat + Plan Visualizer
  * Light theme — white backgrounds, subtle borders, clean typography.
+ * 
+ * NO static/fake data is ever shown. The YardMap only renders when
+ * a real DAG with actual locations exists. In mock mode (no LLM key),
+ * the user sees status messages but no fake zones or fake robots.
  */
 export function ChatView() {
-  const phase = usePlanStore((s) => s.phase);
-  const conversation = usePlanStore((s) => s.conversation);
-  const currentPlan = usePlanStore((s) => s.currentPlan);
-  const currentDag = usePlanStore((s) => s.currentDag);
-  const correctionsRemaining = usePlanStore((s) => s.correctionsRemaining);
-  const addMessage = usePlanStore((s) => s.addMessage);
-  const setPlan = usePlanStore((s) => s.setPlan);
-  const setDag = usePlanStore((s) => s.setDag);
-  const setPhase = usePlanStore((s) => s.setPhase);
-  const setError = usePlanStore((s) => s.setError);
+  const {
+    phase, conversation, currentPlan, currentDag, correctionsRemaining,
+    addMessage, setPlan, setDag, setPhase, setError, setCorrectionsRemaining,
+  } = usePlanStore(
+    (s) => ({
+      phase: s.phase, conversation: s.conversation, currentPlan: s.currentPlan,
+      currentDag: s.currentDag, correctionsRemaining: s.correctionsRemaining,
+      addMessage: s.addMessage, setPlan: s.setPlan, setDag: s.setDag,
+      setPhase: s.setPhase, setError: s.setError, setCorrectionsRemaining: s.setCorrectionsRemaining,
+    }),
+    shallow
+  );
   const robotCount = useConfigStore((s) => s.robotCount);
   const sessionId = useConfigStore((s) => s.sessionId);
-  const setCorrectionsRemaining = usePlanStore((s) => s.setCorrectionsRemaining);
+  const mockMode = useConfigStore((s) => s.mockMode);
 
   const [missionText, setMissionText] = useState("");
   const [correctionText, setCorrectionText] = useState("");
@@ -31,9 +38,10 @@ export function ChatView() {
 
   useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: "smooth" }); }, [conversation]);
 
-  const planLocs = currentPlan?.flows ? extractLocs(currentPlan) : undefined;
+  // Only show the YardMap when the DAG has real locations from the LLM (not null)
+  const hasRealDag = currentDag !== null && currentDag?.locations != null && Object.keys(currentDag.locations).length > 0;
 
-  const handleSend = async () => {
+  const handleSend = useCallback(async () => {
     if (!missionText.trim() || loading) return;
     setLoading(true);
     setError(null);
@@ -43,13 +51,19 @@ export function ChatView() {
       setPlan(r.plan as Record<string, unknown>);
       setPhase(r.phase as any);
       setCorrectionsRemaining(r.corrections_remaining);
-      addMessage({ role: "assistant", content: formatPlan(r.plan), timestamp: Date.now() });
+      addMessage({
+        role: "assistant",
+        content: r.mock
+          ? `[MOCK MODE] Mission "${missionText}" received. No LLM connected — connect an ANTHROPIC_API_KEY to generate a real plan. The YardMap will show locations once a real DAG is generated.`
+          : formatPlan(r.plan),
+        timestamp: Date.now(),
+      });
     } catch (e: any) {
       setError(e.message);
     } finally { setLoading(false); setMissionText(""); }
-  };
+  }, [missionText, loading, sessionId, addMessage, setPlan, setPhase, setCorrectionsRemaining, setError]);
 
-  const handleRevise = async () => {
+  const handleRevise = useCallback(async () => {
     if (!correctionText.trim() || loading) return;
     setLoading(true);
     setError(null);
@@ -59,24 +73,49 @@ export function ChatView() {
       const r = await postCorrect(correctionText, sessionId);
       setPlan(r.plan as Record<string, unknown>);
       setCorrectionsRemaining(r.corrections_remaining);
-      addMessage({ role: "assistant", content: formatPlan(r.plan), timestamp: Date.now() });
+      addMessage({
+        role: "assistant",
+        content: r.mock
+          ? "[MOCK MODE] Correction noted. No LLM connected — no plan was updated."
+          : formatPlan(r.plan),
+        timestamp: Date.now(),
+      });
     } catch (e: any) { setError(e.message); }
     finally { setLoading(false); setCorrectionText(""); }
-  };
+  }, [correctionText, loading, sessionId, addMessage, setPlan, setCorrectionsRemaining, setError]);
 
-  const handleAccept = async () => {
+  const handleAccept = useCallback(async () => {
     if (loading) return;
     setLoading(true);
     setError(null);
     try {
       const r = await postGenerate(sessionId);
       setDag(r.dag as any);
-      setPhase("running");
+      setPhase(r.phase as any);
+      if (!r.dag) {
+        addMessage({
+          role: "assistant",
+          content: "[MOCK MODE] No real DAG generated. Connect an ANTHROPIC_API_KEY to create actual tasks and locations.",
+          timestamp: Date.now(),
+        });
+      }
     } catch (e: any) { setError(e.message); }
     finally { setLoading(false); }
-  };
+  }, [loading, sessionId, setDag, setPhase, addMessage, setError]);
 
-  const isGenerating = phase === "generating";
+  const handleLaunch = useCallback(async () => {
+    if (loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await postLaunch(sessionId);
+    } catch {
+      console.warn("[launch] Failed to launch (expected in mock mode without Gazebo)");
+      // TODO: Show user-facing toast/notification in live mode
+    }
+    setPhase("running");
+    setLoading(false);
+  }, [loading, sessionId, setError, setPhase]);
 
   return (
     <div style={styles.container}>
@@ -128,16 +167,43 @@ export function ChatView() {
             <span style={{ color: "#e88d3b", fontSize: 11 }}>{correctionsRemaining} corrections left</span>
           )}
         </div>
-        <YardMap locations={planLocs} dag={currentDag} planned />
+
+        {hasRealDag ? (
+          <YardMap dag={currentDag} planned />
+        ) : (
+          <div style={styles.emptyMap}>
+            <div style={styles.emptyIcon}>
+              <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                <rect x="6" y="12" width="36" height="22" rx="4" fill="#e2e8f0" />
+                <circle cx="18" cy="26" r="5" fill="#cbd5e0" />
+                <circle cx="30" cy="26" r="5" fill="#cbd5e0" />
+              </svg>
+            </div>
+            <div style={styles.emptyText}>
+              {mockMode
+                ? "MOCK MODE — No real plan data. Connect ANTHROPIC_API_KEY to generate a mission DAG."
+                : "Send a mission description to generate a task plan."}
+            </div>
+          </div>
+        )}
+
         <div style={styles.controls}>
-          <button style={styles.acceptBtn} onClick={handleAccept} disabled={loading || !currentPlan}>
-            {loading ? "Generating..." : "Accept Plan"}
-          </button>
-          <button style={styles.reviseBtn}
-            onClick={() => setShowCorrection(!showCorrection)}
-            disabled={loading || correctionsRemaining <= 0}>
-            Revise Plan
-          </button>
+          {phase === "dag_ready" ? (
+            <button style={styles.launchBtn} onClick={handleLaunch} disabled={loading}>
+              {loading ? "Launching..." : "🚀  Launch Mission"}
+            </button>
+          ) : (
+            <>
+              <button style={styles.acceptBtn} onClick={handleAccept} disabled={loading || phase === "generating"}>
+                {loading ? "Generating..." : "Accept Plan"}
+              </button>
+              <button style={styles.reviseBtn}
+                onClick={() => setShowCorrection(!showCorrection)}
+                disabled={loading || correctionsRemaining <= 0}>
+                Revise Plan
+              </button>
+            </>
+          )}
         </div>
         {showCorrection && (
           <div style={styles.correctionArea}>
@@ -155,23 +221,6 @@ export function ChatView() {
 }
 
 // ── Helpers ──
-
-function extractLocs(plan: Record<string, unknown>): Record<string, { x: number; y: number }> {
-  const all: Record<string, { x: number; y: number }> = {
-    dock_1:{x:-4,y:0}, dock_2:{x:-4,y:-2}, zone_A:{x:2,y:-3}, zone_B:{x:2,y:0},
-    zone_C:{x:2,y:3}, zone_D:{x:6,y:-3}, zone_E:{x:6,y:0}, zone_F:{x:6,y:3},
-    charging_station:{x:0,y:4}, weigh_station:{x:0,y:-4},
-  };
-  const used = new Set<string>();
-  const flows = plan.flows as Array<Record<string, unknown>> | undefined;
-  if (flows) for (const f of flows) {
-    const tasks = f.tasks as Array<Record<string, unknown>> | undefined;
-    if (tasks) for (const t of tasks) if (t.location) used.add(t.location as string);
-  }
-  const r: Record<string, { x: number; y: number }> = {};
-  for (const n of used) if (all[n]) r[n] = all[n];
-  return Object.keys(r).length > 0 ? r : all;
-}
 
 function formatPlan(plan: Record<string, unknown> | null): string {
   if (!plan) return "No plan generated.";
@@ -203,8 +252,12 @@ const styles: Record<string, React.CSSProperties> = {
   controls: { display: "flex", gap: 8, padding: "12px 16px", borderTop: "1px solid #e2e8f0", background: "#f8f9fa" },
   acceptBtn: { flex: 1, background: "#23a45d", color: "#fff", border: "none", borderRadius: 8, padding: 12, fontSize: 14, fontWeight: 700, cursor: "pointer" },
   reviseBtn: { flex: 1, background: "#e88d3b", color: "#fff", border: "none", borderRadius: 8, padding: 12, fontSize: 14, fontWeight: 700, cursor: "pointer" },
+  launchBtn: { flex: 1, background: "#4f8ef7", color: "#fff", border: "none", borderRadius: 8, padding: 12, fontSize: 14, fontWeight: 700, cursor: "pointer" },
   correctionArea: { padding: "12px 16px", borderTop: "1px solid #e2e8f0", display: "flex", flexDirection: "column", gap: 8, background: "#f8f9fa" },
   correctionInput: { background: "#ffffff", color: "#1a202c", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 12px", fontSize: 13, resize: "none", outline: "none" },
   sendRevBtn: { background: "#e88d3b", color: "#fff", border: "none", borderRadius: 6, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
   cancelBtn: { background: "transparent", color: "#718096", border: "1px solid #e2e8f0", borderRadius: 6, padding: "8px 16px", fontSize: 13, cursor: "pointer" },
+  emptyMap: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, background: "#f8f9fa", border: "1px dashed #e2e8f0", borderRadius: 8, margin: 16, minHeight: 260 },
+  emptyIcon: { opacity: 0.5 },
+  emptyText: { color: "#a0aec0", fontSize: 13, textAlign: "center", maxWidth: 320, lineHeight: 1.5 },
 };

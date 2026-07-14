@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel, Field
 
-from backend.session import session_store
+from ..session import session_store
 
 router = APIRouter()
 
@@ -17,6 +17,7 @@ class ConfigResponse(BaseModel):
     session_id: str
     robot_count: int
     phase: str
+    mock: bool = False
 
 
 @router.post("/config", response_model=ConfigResponse)
@@ -26,11 +27,14 @@ async def set_config(request: Request, body: ConfigRequest):
     Idempotent: calling multiple times with the same value is safe.
     The API key is set via backend .env file, not via this endpoint.
     """
-    sid, session = session_store.get_or_create(body.session_id)
+    sid, session = await session_store.get_or_create(body.session_id)
     session.robot_count = body.robot_count
+
+    mock_mode = getattr(request.app.state, "mock_mode", True)
 
     return ConfigResponse(
         session_id=sid,
         robot_count=session.robot_count,
         phase=session.phase.value,
+        mock=mock_mode,
     )

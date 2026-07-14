@@ -10,7 +10,9 @@ import type { WSMessage } from "../types";
  * - Auto-reconnects on disconnect with 2s backoff
  * - Tracks last seq for state sync on reconnect
  */
-export function useWebSocket(url: string = "ws://localhost:5000/status") {
+const DEFAULT_WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:5000/status";
+
+export function useWebSocket(url: string = DEFAULT_WS_URL) {
   const wsRef = useRef<WebSocket | null>(null);
   const seqRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>();

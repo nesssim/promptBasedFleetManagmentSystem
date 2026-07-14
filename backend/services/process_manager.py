@@ -1,24 +1,31 @@
 """Process lifecycle management: PID tracking, kill, port negotiation.
 
 Design decisions (from ADR-3):
-- PID files in /tmp/mission_swarm.pids (Linux/WSL only)
-- SIGTERM → 3s grace → SIGKILL
+- PID files in system temp dir (cross-platform: /tmp or %TEMP%)
+- SIGTERM → 3s grace → SIGKILL (Unix); taskkill /PID (Windows)
 - Port negotiation from pool [11345, 11346, 11347]
 - atexit + signal.SIGTERM handlers for belt-and-suspenders cleanup
-- Fallback pkill -f only if PID file is missing
+- Fallback pkill -f only if PID file is missing (Unix only)
 """
 
 import asyncio
 import atexit
 import json
+import logging
 import os
+import platform
 import signal
 import socket
+import subprocess
+import tempfile
 import time
 from typing import Optional
 
-PID_FILE = "/tmp/mission_swarm.pids"
+logger = logging.getLogger(__name__)
+
+PID_FILE = os.path.join(tempfile.gettempdir(), "mission_swarm.pids")
 PORT_POOL = [11345, 11346, 11347]
+IS_WINDOWS = platform.system() == "Windows"
 
 
 # ── PID Tracking ──
@@ -49,13 +56,42 @@ def clear_pid_file() -> None:
 # ── Kill Logic ──
 
 
+def _kill_process(pid: int) -> None:
+    """Kill a process by PID, cross-platform."""
+    if IS_WINDOWS:
+        try:
+            subprocess.run(
+                ["taskkill", "/F", "/PID", str(pid)],
+                capture_output=True,
+                timeout=5,
+            )
+        except Exception:
+            logger.info("Failed to kill process")
+    else:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            pass
+
+
+def _force_kill_process(pid: int) -> None:
+    """Force-kill a process, cross-platform."""
+    if IS_WINDOWS:
+        _kill_process(pid)  # taskkill /F is already a force kill
+    else:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            logger.info("Failed to kill process")
+
+
 def kill_all() -> None:
     """Kill all tracked processes.
 
     1. Read PID file
-    2. SIGTERM all
+    2. SIGTERM (or taskkill /F on Windows) all
     3. Wait 3s grace period
-    4. SIGKILL survivors
+    4. SIGKILL survivors (Unix only; Windows already force-killed)
     5. Verify port is free (15s retry)
     6. Clean up PID file
     """
@@ -65,22 +101,17 @@ def kill_all() -> None:
         clear_pid_file()
         return
 
-    # Step 1: SIGTERM all
+    # Step 1: Terminate all
     for entry in pids:
-        try:
-            os.kill(entry["pid"], signal.SIGTERM)
-        except (ProcessLookupError, PermissionError):
-            pass
+        _kill_process(entry["pid"])
 
     # Step 2: Wait for grace period
     time.sleep(3.0)
 
-    # Step 3: SIGKILL survivors
-    for entry in pids:
-        try:
-            os.kill(entry["pid"], signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            pass
+    # Step 3: Force-kill survivors (Unix only)
+    if not IS_WINDOWS:
+        for entry in pids:
+            _force_kill_process(entry["pid"])
 
     # Step 4: Verify port free
     _wait_for_port_free(PORT_POOL[0], timeout=15.0)
@@ -91,13 +122,24 @@ def kill_all() -> None:
 
 def _pkill_fallback() -> None:
     """Fallback: kill by process name pattern if PID file is missing."""
-    for pattern in [
-        "gzserver",
-        "gzclient",
-        "fleet_coordinator",
-        "robot_state_publisher",
-    ]:
-        os.system(f"pkill -f {pattern} 2>/dev/null")
+    if IS_WINDOWS:
+        for name in ["gazebo", "gzserver", "python", "robot_state_publisher"]:
+            try:
+                subprocess.run(
+                    ["taskkill", "/F", "/IM", f"{name}.exe"],
+                    capture_output=True,
+                    timeout=5,
+                )
+            except Exception:
+                pass
+    else:
+        for pattern in [
+            "gzserver",
+            "gzclient",
+            "fleet_coordinator",
+            "robot_state_publisher",
+        ]:
+            os.system(f"pkill -f {pattern} 2>/dev/null")
 
 
 # ── Port Negotiation ──

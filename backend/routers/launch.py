@@ -1,12 +1,16 @@
 """POST /launch and POST /kill — Mission execution lifecycle."""
 
+import logging
+
 from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel
 
-from backend.models import MissionPhase
-from backend.session import session_store
-from backend.services.process_manager import kill_all, clear_pid_file
-from backend.services.gazebo import GazeboLauncher
+from ..models import MissionPhase
+from ..session import session_store
+from ..services.process_manager import kill_all, clear_pid_file
+from ..services.gazebo import GazeboLauncher
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -25,9 +29,9 @@ async def launch_mission(request: Request):
     Returns 409 if already running or no DAG ready.
     """
     sid = request.headers.get("X-Session-Id", "")
-    _, session = session_store.get_or_create(sid)
+    _, session = await session_store.get_or_create(sid)
 
-    if not session_store.transition(
+    if not await session_store.transition(
         sid,
         from_phases=[MissionPhase.DAG_READY, MissionPhase.IDLE],
         to=MissionPhase.LAUNCHING,
@@ -45,7 +49,7 @@ async def launch_mission(request: Request):
 
         # TODO: Send DAG via ros2 param set (Phase 3)
 
-        session_store.transition(
+        await session_store.transition(
             sid,
             from_phases=[MissionPhase.LAUNCHING],
             to=MissionPhase.RUNNING,
@@ -58,12 +62,13 @@ async def launch_mission(request: Request):
         )
 
     except Exception as e:
-        session_store.transition(
+        logger.error("Launch failed: %s", e)
+        await session_store.transition(
             sid,
             from_phases=[MissionPhase.LAUNCHING, MissionPhase.DAG_READY],
             to=MissionPhase.ERROR,
         )
-        raise HTTPException(500, f"Launch failed: {str(e)}")
+        raise HTTPException(500, "Launch failed. Check server logs for details.")
 
 
 @router.post("/kill")
@@ -81,6 +86,6 @@ async def kill_mission(request: Request):
 
     # Reset session
     if sid:
-        session_store.reset(sid)
+        await session_store.reset(sid)
 
     return {"status": "killed", "phase": "idle"}

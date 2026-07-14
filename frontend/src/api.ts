@@ -5,7 +5,7 @@
 
 import type { DAGSpec } from "./types";
 
-const BASE = "http://localhost:5000";
+const BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
@@ -25,12 +25,14 @@ export interface PlanResponse {
   plan: Record<string, unknown> | null;
   dag: DAGSpec | null;
   corrections_remaining: number;
+  mock?: boolean;
 }
 
 export interface ConfigResponse {
   session_id: string;
   robot_count: number;
   phase: string;
+  mock: boolean;
 }
 
 export interface LaunchResponse {
@@ -43,6 +45,7 @@ export interface HealthResponse {
   status: "ok" | "degraded" | "error";
   service: string;
   version: string;
+  mock_mode?: boolean;
 }
 
 /** Set the robot count for the session */

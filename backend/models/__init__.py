@@ -1,5 +1,6 @@
 """Shared Pydantic models, enums, and dataclasses."""
 
+from datetime import datetime
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import Optional
@@ -34,6 +35,11 @@ class SessionState:
     current_dag: Optional[dict] = None
     mission_id: Optional[str] = None
     correction_count: int = 0
+    created_at: datetime = field(default_factory=datetime.now)
+    last_accessed: datetime = field(default_factory=datetime.now)
+
+    def touch(self) -> None:
+        self.last_accessed = datetime.now()
 
     def reset(self) -> None:
         """Return session to IDLE with defaults."""

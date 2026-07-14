@@ -1,0 +1,10 @@
+[project]
+name = "mission-swarm-backend"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[tool.mypy]
+python_version = "3.10"
+strict = false
+ignore_missing_imports = true
+warn_unused_ignores = true

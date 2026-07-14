@@ -4,7 +4,7 @@ import json
 import os
 from fastapi import APIRouter, Request, HTTPException
 
-from backend.models import MissionPhase
+from ..models import MissionPhase
 
 router = APIRouter()
 
@@ -26,9 +26,6 @@ async def health_check(request: Request):
     During the first 30s after launch, health checks are suppressed
     (Gazebo cold start grace period). After 30s, standard 2s ping / 10s timeout.
     """
-    store = request.app.state.session_store
-    # Get most recent session for phase info
-    # For now, return basic health
     return {
         "status": "ok",
         "service": "MissionSwarm R2",

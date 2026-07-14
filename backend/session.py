@@ -1,59 +1,131 @@
-"""Session store with state machine guards.
+"""Session state management with TTL and atomic transitions."""
 
-The backend is the single source of truth for mission phase.
-The browser reflects backend state via WebSocket phase_change messages.
-"""
-
+import asyncio
+import logging
 import uuid
-from backend.models import MissionPhase, SessionState
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from enum import Enum
+from typing import Optional
+
+from .models import MissionPhase, SessionState
+
+SESSION_TTL = timedelta(hours=1)
+MAX_SESSIONS = 1000
 
 
 class SessionStore:
-    """In-memory session storage keyed by UUID.
+    """Thread-safe session store with TTL-based expiry."""
 
-    Known limitation: lost on backend restart. Mission history in
-    data/missions.json survives restarts.
-    """
+    VALID_TRANSITIONS: dict[MissionPhase, list[MissionPhase]] = {
+        MissionPhase.IDLE: [MissionPhase.PLANNING],
+        MissionPhase.PLANNING: [MissionPhase.PLAN_READY],
+        MissionPhase.PLAN_READY: [MissionPhase.GENERATING, MissionPhase.PLANNING],
+        MissionPhase.GENERATING: [MissionPhase.DAG_READY],
+        MissionPhase.DAG_READY: [MissionPhase.LAUNCHING],
+        MissionPhase.LAUNCHING: [MissionPhase.RUNNING, MissionPhase.IDLE],
+        MissionPhase.RUNNING: [MissionPhase.IDLE],
+        MissionPhase.COMPLETE: [MissionPhase.IDLE],
+        MissionPhase.ERROR: [MissionPhase.IDLE],
+    }
 
     def __init__(self):
         self._sessions: dict[str, SessionState] = {}
+        self._lock = asyncio.Lock()
+        self._cleanup_task: Optional[asyncio.Task] = None
 
-    def get_or_create(self, session_id: str | None = None) -> tuple[str, SessionState]:
-        """Retrieve existing session or create a new one.
+    def start_cleanup(self) -> None:
+        """Start periodic cleanup of expired sessions."""
+        if self._cleanup_task is None:
+            self._cleanup_task = asyncio.create_task(self._cleanup_loop())
 
-        Returns (session_id, SessionState).
-        """
-        if not session_id or session_id not in self._sessions:
-            session_id = str(uuid.uuid4())
-            self._sessions[session_id] = SessionState()
-        return session_id, self._sessions[session_id]
+    async def _cleanup_loop(self) -> None:
+        """Run every 5 minutes, evict expired sessions."""
+        while True:
+            await asyncio.sleep(300)
+            await self._evict_expired()
 
-    def transition(
-        self, session_id: str, from_phases: list[MissionPhase], to: MissionPhase
+    async def _evict_expired(self) -> None:
+        """Remove sessions past their TTL."""
+        now = datetime.now()
+        async with self._lock:
+            expired = [
+                sid
+                for sid, state in self._sessions.items()
+                if now - state.last_accessed > SESSION_TTL
+            ]
+            for sid in expired:
+                del self._sessions[sid]
+            if expired:
+                logger.info("Evicted %s expired session(s)", len(expired))
+
+    async def get_or_create(self, session_id: str = "") -> tuple[str, SessionState]:
+        """Get existing session or create new one. Returns (id, state)."""
+        async with self._lock:
+            sid = (
+                session_id
+                if (session_id and session_id in self._sessions)
+                else uuid.uuid4().hex
+            )
+            if sid not in self._sessions:
+                if len(self._sessions) >= MAX_SESSIONS:
+                    raise RuntimeError("Maximum session limit reached")
+                self._sessions[sid] = SessionState()
+            state = self._sessions[sid]
+            state.touch()
+            return sid, state
+
+    async def transition(
+        self,
+        session_id: str,
+        from_phases: list[MissionPhase],
+        to: MissionPhase,
     ) -> bool:
-        """Attempt a state transition with guard.
+        """Atomically transition session state if current phase is in from_phases."""
+        async with self._lock:
+            session = self._sessions.get(session_id)
+            if not session:
+                return False
+            if session.phase not in from_phases:
+                return False
+            if to not in self.VALID_TRANSITIONS.get(session.phase, []):
+                return False
+            session.phase = to
+            session.touch()
+            return True
 
-        Returns True if transition succeeded, False if current phase
-        is not in from_phases (caller should return 409).
-        """
-        session = self._sessions.get(session_id)
-        if not session or session.phase not in from_phases:
-            return False
-        session.phase = to
-        return True
-
-    def get(self, session_id: str) -> SessionState | None:
-        """Get session by ID without creating."""
+    def get(self, session_id: str) -> Optional[SessionState]:
+        """Get session without creating. Does not touch (read-only)."""
         return self._sessions.get(session_id)
 
-    def reset(self, session_id: str) -> bool:
-        """Reset session to IDLE. Returns False if session not found."""
-        session = self._sessions.get(session_id)
-        if not session:
-            return False
-        session.reset()
-        return True
+    async def get_phase(self, session_id: str) -> Optional[MissionPhase]:
+        """Get current phase for a session."""
+        async with self._lock:
+            session = self._sessions.get(session_id)
+            return session.phase if session else None
+
+    async def get_all(self) -> list[tuple[str, SessionState]]:
+        """Return all sessions (for admin/debug)."""
+        async with self._lock:
+            return list(self._sessions.items())
+
+
+    async def reset(self, session_id: str) -> None:
+        """Reset session state to IDLE."""
+        async with self._lock:
+            state = self._sessions.get(session_id)
+            if state:
+                state.reset()
+
+    async def transition_to_error(self, session_id: str) -> None:
+        """Transition session to ERROR state unconditionally."""
+        await self.transition(
+            session_id,
+            from_phases=[p for p in MissionPhase if p != MissionPhase.IDLE],
+            to=MissionPhase.ERROR,
+        )
 
 
 # Global singleton
+logger = logging.getLogger(__name__)
 session_store = SessionStore()

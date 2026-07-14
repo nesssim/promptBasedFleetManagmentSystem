@@ -13,15 +13,15 @@ Key design decisions:
 """
 
 import asyncio
-import hashlib
 import json
 import os
+import re
 from typing import Any, Optional
 
 from anthropic import AsyncAnthropic
 
-from backend.config import Settings
-from backend.services.dag_validator import (
+from ..config import Settings
+from .dag_validator import (
     list_locations,
     validate_plan,
     create_task_dag,
@@ -278,7 +278,6 @@ class LLMService:
             return json.loads(text)
         except json.JSONDecodeError:
             # LLM may wrap in markdown code block
-            import re
             match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
             if match:
                 return json.loads(match.group(1))
@@ -306,7 +305,4 @@ class LLMService:
         with open(path) as f:
             return json.load(f)
 
-    def compute_dag_hash(self, dag: dict) -> str:
-        """SHA-256 hash of canonical DAG JSON for convergence detection."""
-        serialized = json.dumps(dag, sort_keys=True, default=str)
-        return hashlib.sha256(serialized.encode()).hexdigest()
+

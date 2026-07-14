@@ -10,11 +10,14 @@ All other ROS 2 communication (param set, topic echo) uses CLI subprocess calls.
 
 import asyncio
 import json
+import logging
 import threading
 import time
 from typing import Optional
 
-from backend.models.robot import WSMessage, WSMessageType
+from ..models.robot import WSMessage, WSMessageType
+
+logger = logging.getLogger(__name__)
 
 try:
     import rclpy
@@ -24,7 +27,7 @@ try:
     ROS2_AVAILABLE = True
 except ImportError:
     ROS2_AVAILABLE = False
-    print("[ros_bridge] WARNING: rclpy not available. ROS 2 bridge disabled.")
+    logger.warning("rclpy not available. ROS 2 bridge disabled.")
 
 
 class ROS2BridgeNode(Node):
@@ -81,7 +84,7 @@ class ROS2Bridge:
         Must be called from the main async event loop thread.
         """
         if not ROS2_AVAILABLE:
-            print("[ros_bridge] Starting in stub mode (no rclpy)")
+            logger.info("Starting in stub mode (no rclpy)")
             self._running = True
             return
 
@@ -89,7 +92,7 @@ class ROS2Bridge:
         self._loop = asyncio.get_event_loop()
         self._thread = threading.Thread(target=self._run_spin, daemon=True)
         self._thread.start()
-        print("[ros_bridge] ROS 2 bridge thread started")
+        logger.info("ROS 2 bridge thread started")
 
     def stop(self) -> None:
         """Stop the ROS 2 bridge thread."""
@@ -99,11 +102,11 @@ class ROS2Bridge:
                 if self._node:
                     self._node.destroy_node()
                 rclpy.shutdown()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.info("Shutdown error: %s", e)
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=3.0)
-        print("[ros_bridge] ROS 2 bridge stopped")
+        logger.info("ROS 2 bridge stopped")
 
     async def get_message(self, timeout: float = 5.0) -> Optional[dict]:
         """Read next message from the queue with timeout.
@@ -125,7 +128,7 @@ class ROS2Bridge:
             while rclpy.ok() and self._running:
                 rclpy.spin_once(self._node, timeout_sec=0.1)
         except Exception as e:
-            print(f"[ros_bridge] Thread error: {e}")
+            logger.info("Thread error: %s", e)
         finally:
             if rclpy.ok():
                 rclpy.shutdown()

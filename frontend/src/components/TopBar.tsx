@@ -21,6 +21,7 @@ export function TopBar() {
   const resetFleet = useFleetStore((s) => s.reset);
   const sessionId = useConfigStore((s) => s.sessionId);
   const connected = useFleetStore((s) => s.connected);
+  const mockMode = useConfigStore((s) => s.mockMode);
 
   const handleKill = async () => {
     try {
@@ -36,6 +37,7 @@ export function TopBar() {
     <div style={styles.bar}>
       <div style={styles.left}>
         <span style={styles.logo}>MissionSwarm</span>
+        {mockMode && <span style={styles.mockBadge}>MOCK</span>}
       </div>
       <div style={styles.right}>
         <span style={styles.phaseLabel}>{PHASE_LABELS[phase] || phase}</span>
@@ -86,5 +88,15 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     cursor: "pointer",
     transition: "background 0.15s",
+  },
+  mockBadge: {
+    background: "#fef3c7",
+    color: "#92400e",
+    fontSize: 10,
+    fontWeight: 700,
+    padding: "2px 8px",
+    borderRadius: 4,
+    letterSpacing: "0.5px",
+    marginLeft: 8,
   },
 };

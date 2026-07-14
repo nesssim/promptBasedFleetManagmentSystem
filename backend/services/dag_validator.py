@@ -7,7 +7,6 @@ Category 1: LLM Tool Functions (called by Claude via Anthropic tool-use API)
   - validate_plan(): Validates a partial plan against location whitelist
 
 Category 2: Backend Utility Functions (called directly by orchestrator)
-  - create_plan(): Assembles Phase 1 prompt structure
   - create_task_dag(): Builds complete validated DAG from Phase 2 response
   - get_spawn_positions(): Computes N non-overlapping spawn positions
 """
@@ -92,21 +91,6 @@ def validate_plan(plan_json: dict) -> dict:
 # ═══════════════════════════════════════════════════════════════
 # Category 2: Backend Utility Functions
 # ═══════════════════════════════════════════════════════════════
-
-def create_plan(mission: str, robot_count: int) -> dict:
-    """Assembles Phase 1 prompt structure.
-
-    Called by LLMOrchestrator, not by Claude.
-    Returns a context dict with available locations and robot fleet info.
-    """
-    locations = _load_locations()
-    return {
-        "mission": mission,
-        "robot_count": robot_count,
-        "available_locations": list(locations.keys()),
-        "location_coordinates": locations,
-    }
-
 
 def create_task_dag(plan: dict) -> dict:
     """Build a complete validated DAG from a Phase 2 LLM response.

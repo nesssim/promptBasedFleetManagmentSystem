@@ -9,16 +9,19 @@ Responsible for:
 
 import asyncio
 import json
+import logging
 import os
 import tempfile
 import xml.etree.ElementTree as ET
-from typing import Optional
+from typing import Callable, Optional
 
-from backend.services.process_manager import (
+from .process_manager import (
     track_pid,
     negotiate_port,
     async_wait_for_gazebo,
 )
+
+logger = logging.getLogger(__name__)
 
 # Path to the stock TurtleBot3 Burger SDF model
 TURTLEBOT3_SDF = (
@@ -71,7 +74,8 @@ def patch_sdf(robot_n: int) -> str:
     for elem in root.iter("frameName"):
         elem.text = f"{ns}/base_scan"
 
-    out_path = f"/tmp/burger_{robot_n}.sdf"
+    fd, out_path = tempfile.mkstemp(suffix=".sdf", prefix=f"burger_{robot_n}_")
+    os.close(fd)
     tree.write(out_path, xml_declaration=True)
     return out_path
 
@@ -96,9 +100,9 @@ class GazeboLauncher:
         self.port: Optional[int] = None
         self.gzserver_process: Optional[asyncio.subprocess.Process] = None
         self.robot_processes: list[dict] = []
-        self._progress_callbacks: list[callable] = []
+        self._progress_callbacks: list[Callable] = []
 
-    def on_progress(self, callback: callable) -> None:
+    def on_progress(self, callback: Callable) -> None:
         """Register a callback for spawn progress events.
 
         Callback receives: dict with current, total, status, robot_id
@@ -131,7 +135,7 @@ class GazeboLauncher:
         """
         # Step 1: Negotiate port
         self.port = negotiate_port()
-        print(f"[gazebo] Using port {self.port}")
+        logger.info("Using port %s", self.port)
 
         # Step 2: Start gzserver
         self.gzserver_process = await asyncio.create_subprocess_exec(
@@ -142,14 +146,14 @@ class GazeboLauncher:
             stderr=asyncio.subprocess.PIPE,
         )
         track_pid(self.gzserver_process.pid, "gzserver")
-        print(f"[gazebo] gzserver started (PID {self.gzserver_process.pid})")
+        logger.info("gzserver started (PID %s)", self.gzserver_process.pid)
 
         # Step 3: Wait for Gazebo readiness
-        print(f"[gazebo] Waiting for Gazebo on port {self.port}...")
+        logger.info("Waiting for Gazebo on port %s...", self.port)
         ready = await async_wait_for_gazebo(self.port, timeout=30.0)
         if not ready:
             raise TimeoutError(f"Gazebo did not start within 30s on port {self.port}")
-        print("[gazebo] Gazebo is ready")
+        logger.info("Gazebo is ready")
 
         # Step 4: Spawn robots sequentially
         positions = get_spawn_positions(robot_count)
@@ -157,17 +161,17 @@ class GazeboLauncher:
             await self._emit_progress(i - 1, robot_count, "spawning", f"robot_{i}")
             try:
                 await self._spawn_robot(i, pos)
-                print(f"[gazebo] robot_{i} spawned at ({pos['x']}, {pos['y']})")
+                logger.info("robot_%s spawned at (%s, %s)", i, pos['x'], pos['y'])
                 await self._emit_progress(i, robot_count, "ok", f"robot_{i}")
             except Exception as e:
-                print(f"[gazebo] robot_{i} spawn failed: {e}")
+                logger.info("robot_%s spawn failed: %s", i, e)
                 await self._emit_progress(i, robot_count, "failed", f"robot_{i}")
 
             # 2s delay between spawns (prevents Gazebo entity spawner deadlock)
             if i < robot_count:
                 await asyncio.sleep(2.0)
 
-        print(f"[gazebo] All {robot_count} robots spawned")
+        logger.info("All %s robots spawned", robot_count)
         return self.port
 
     async def _spawn_robot(self, n: int, position: dict) -> None:
@@ -207,13 +211,14 @@ class GazeboLauncher:
 
     async def kill(self) -> None:
         """Kill all spawned processes for this mission."""
+        import signal
         for entry in self.robot_processes:
-            try:
-                proc = entry.get("process")
-                if proc:
-                    proc.terminate()
-            except Exception:
-                pass
+            pid = entry.get("pid")
+            if pid:
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                except (OSError, ProcessLookupError):
+                    pass
         self.robot_processes.clear()
 
         if self.gzserver_process:

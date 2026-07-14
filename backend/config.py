@@ -1,17 +1,20 @@
 """Application configuration loaded from environment variables."""
 
-import sys
+import logging
 from pydantic_settings import BaseSettings
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
     """Single source of truth for all configurable parameters.
 
     Loaded from .env file at project root or environment variables.
-    FastAPI refuses to start if ANTHROPIC_API_KEY is missing.
+    The backend runs in mock mode if ANTHROPIC_API_KEY is not set —
+    plan/generate endpoints return stub data without calling Claude.
     """
 
-    anthropic_api_key: str = ""  # No default — validated on startup
+    anthropic_api_key: str = ""  # Empty = mock mode (stub responses)
     host: str = "0.0.0.0"
     port: int = 5000
     cors_origin: str = "http://localhost:5173"
@@ -19,12 +22,17 @@ class Settings(BaseSettings):
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
+    @property
+    def mock_mode(self) -> bool:
+        """True when no API key is configured — returns stub data."""
+        return not bool(self.anthropic_api_key)
+
 
 def validate_settings() -> Settings:
-    """Load and validate settings. Exits with clear message if key missing."""
+    """Load and validate settings. Warns if key missing, but does NOT exit."""
     settings = Settings()
-    if not settings.anthropic_api_key:
-        print("FATAL: ANTHROPIC_API_KEY is not set.", file=sys.stderr)
-        print("Create a .env file with: ANTHROPIC_API_KEY=sk-ant-...", file=sys.stderr)
-        sys.exit(1)
+    if settings.mock_mode:
+        logger.warning("MOCK MODE: ANTHROPIC_API_KEY is not set.")
+        logger.warning("Plan/Generate endpoints will return stub data.")
+        logger.warning("Set ANTHROPIC_API_KEY=sk-ant-... in .env for real LLM calls.")
     return settings

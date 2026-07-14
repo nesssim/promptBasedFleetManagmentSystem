@@ -13,6 +13,8 @@ export function SetupView() {
   const robotCount = useConfigStore((s) => s.robotCount);
   const setRobotCount = useConfigStore((s) => s.setRobotCount);
   const setSessionId = useConfigStore((s) => s.setSessionId);
+  const setMockMode = useConfigStore((s) => s.setMockMode);
+  const mockMode = useConfigStore((s) => s.mockMode);
   const setPhase = usePlanStore((s) => s.setPhase);
   const setError = usePlanStore((s) => s.setError);
   const [loading, setLoading] = useState(false);
@@ -23,6 +25,7 @@ export function SetupView() {
     try {
       const res = await postConfig(robotCount);
       setSessionId(res.session_id);
+      setMockMode(res.mock);
       setPhase("planning");
     } catch (err: any) {
       setError(err.message || "Failed to connect to backend");
@@ -86,9 +89,13 @@ export function SetupView() {
           {loading ? "Connecting..." : "Launch Mission Planner"}
         </button>
 
-        <p style={styles.note}>
-          API key is configured on the server — no setup needed in the browser.
-        </p>
+        <div style={styles.mockRow}>
+          {mockMode ? (
+            <span style={styles.mockBadge}>⚙  MOCK MODE — no API key required</span>
+          ) : (
+            <span style={styles.liveBadge}>✓ Live — Claude API connected</span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -196,10 +203,24 @@ const styles: Record<string, React.CSSProperties> = {
     transition: "background 0.15s",
     cursor: "pointer",
   },
-  note: {
+  mockRow: {
+    display: "flex",
+    justifyContent: "center",
+  },
+  mockBadge: {
     fontSize: 11,
-    color: "#a0aec0",
-    textAlign: "center",
-    margin: 0,
+    color: "#92400e",
+    background: "#fef3c7",
+    padding: "4px 12px",
+    borderRadius: 6,
+    fontWeight: 600,
+  },
+  liveBadge: {
+    fontSize: 11,
+    color: "#22543d",
+    background: "#f0fff4",
+    padding: "4px 12px",
+    borderRadius: 6,
+    fontWeight: 600,
   },
 };
