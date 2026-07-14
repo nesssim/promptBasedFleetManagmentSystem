@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     """
 
     anthropic_api_key: str = ""  # Empty = mock mode (stub responses)
+    api_key: str = ""  # Optional auth key for /launch and /kill
     host: str = "0.0.0.0"
     port: int = 5000
     cors_origin: str = "http://localhost:5173"

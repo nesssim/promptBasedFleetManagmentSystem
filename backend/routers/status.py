@@ -94,7 +94,7 @@ async def fleet_status_ws(websocket: WebSocket):
                 await asyncio.sleep(0.5)
             except asyncio.CancelledError:
                 break
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
         _active_connections.discard(websocket)
