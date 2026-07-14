@@ -3,12 +3,15 @@ import { useConfigStore } from "../stores/config";
 import { usePlanStore } from "../stores/plan";
 import { postConfig } from "../api";
 
-const ROBOT_COLORS = ["#4f8ef7", "#23a45d", "#e88d3b", "#a855f7", "#ec4899", "#14b8a6"];
+const ROBOT_COLORS = [
+  "#4f8ef7",
+  "#23a45d",
+  "#e88d3b",
+  "#a855f7",
+  "#ec4899",
+  "#14b8a6",
+];
 
-/**
- * View 1: Setup Panel
- * Light, clean design — white card, soft shadow, no dark mode.
- */
 export function SetupView() {
   const robotCount = useConfigStore((s) => s.robotCount);
   const setRobotCount = useConfigStore((s) => s.setRobotCount);
@@ -37,22 +40,20 @@ export function SetupView() {
   return (
     <div style={styles.wrapper}>
       <div style={styles.card}>
-        <div style={styles.iconWrap}>
-          <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-            <rect x="4" y="10" width="32" height="18" rx="4" fill="#4f8ef7" opacity="0.15" />
-            <circle cx="14" cy="22" r="4" fill="#4f8ef7" />
-            <circle cx="26" cy="22" r="4" fill="#4f8ef7" />
-            <rect x="6" y="14" width="28" height="10" rx="2" fill="#4f8ef7" opacity="0.4" />
-          </svg>
+        <div style={styles.header}>
+          <h1 style={styles.title}>Configure Your Fleet</h1>
+          <p style={styles.subtitle}>Choose how many robots to deploy.</p>
         </div>
 
-        <h1 style={styles.title}>Configure Your Fleet</h1>
-        <p style={styles.subtitle}>Choose how many robots you want to command.</p>
+        <div style={styles.divider} />
 
-        {/* Slider */}
         <div style={styles.sliderSection}>
-          <label style={styles.label}>Number of Robots</label>
+          <div style={styles.sliderHeader}>
+            <label style={styles.label}>Robot Count</label>
+            <span style={styles.countBadge}>{robotCount}</span>
+          </div>
           <div style={styles.sliderRow}>
+            <span style={styles.sliderMin}>1</span>
             <input
               type="range"
               min={1}
@@ -61,28 +62,52 @@ export function SetupView() {
               onChange={(e) => setRobotCount(Number(e.target.value))}
               style={styles.slider}
             />
-            <div style={styles.countCircle}>{robotCount}</div>
-          </div>
-          <div style={styles.iconsRow}>
-            {Array.from({ length: 6 }, (_, i) => (
-              <div key={i} style={{
-                ...styles.robotIcon,
-                background: i < robotCount ? ROBOT_COLORS[i] : "#e2e8f0",
-                opacity: i < robotCount ? 1 : 0.4,
-                transition: "all 0.2s ease",
-              }}>
-                <svg width="20" height="14" viewBox="0 0 20 14">
-                  <rect x="1" y="3" width="18" height="8" rx="2" fill="currentColor" />
-                  <circle cx="6" cy="10" r="2" fill="#fff" />
-                  <circle cx="14" cy="10" r="2" fill="#fff" />
-                </svg>
-              </div>
-            ))}
+            <span style={styles.sliderMax}>6</span>
           </div>
         </div>
 
+        <div style={styles.robotGrid}>
+          {Array.from({ length: 6 }, (_, i) => (
+            <div
+              key={i}
+              style={{
+                ...styles.robotDot,
+                background: i < robotCount ? ROBOT_COLORS[i] : "#e2e8f0",
+                boxShadow:
+                  i < robotCount
+                    ? `0 0 0 2px ${ROBOT_COLORS[i]}33`
+                    : "none",
+              }}
+            >
+              <svg
+                width="16"
+                height="10"
+                viewBox="0 0 16 10"
+                style={{ opacity: i < robotCount ? 1 : 0.3 }}
+              >
+                <rect
+                  x="1"
+                  y="1"
+                  width="14"
+                  height="6"
+                  rx="1.5"
+                  fill={i < robotCount ? "#fff" : "#cbd5e1"}
+                />
+                <circle cx="5" cy="9" r="1" fill={i < robotCount ? "#fff" : "#cbd5e1"} />
+                <circle cx="11" cy="9" r="1" fill={i < robotCount ? "#fff" : "#cbd5e1"} />
+              </svg>
+            </div>
+          ))}
+        </div>
+
+        <div style={styles.divider} />
+
         <button
-          style={{ ...styles.startBtn, opacity: loading ? 0.6 : 1, cursor: loading ? "not-allowed" : "pointer" }}
+          style={{
+            ...styles.startBtn,
+            opacity: loading ? 0.6 : 1,
+            cursor: loading ? "not-allowed" : "pointer",
+          }}
           onClick={handleStart}
           disabled={loading}
         >
@@ -91,10 +116,13 @@ export function SetupView() {
 
         <div style={styles.mockRow}>
           {mockMode ? (
-            <span style={styles.mockBadge}>⚙  MOCK MODE — no API key required</span>
+            <span style={styles.mockBadge}>MOCK MODE</span>
           ) : (
-            <span style={styles.liveBadge}>✓ Live — Claude API connected</span>
+            <span style={styles.liveBadge}>LIVE</span>
           )}
+          <span style={styles.mockHint}>
+            {mockMode ? "No API key required" : "Claude API connected"}
+          </span>
         </div>
       </div>
     </div>
@@ -107,120 +135,156 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    background: "#f8f9fa",
+    background: "#f1f5f9",
+    padding: 24,
+    fontFamily: "'Inter', system-ui, sans-serif",
   },
   card: {
     background: "#ffffff",
     border: "1px solid #e2e8f0",
-    borderRadius: 12,
-    padding: "36px 44px",
-    maxWidth: 460,
+    borderRadius: 6,
+    padding: "32px 36px",
+    maxWidth: 600,
     width: "100%",
     display: "flex",
     flexDirection: "column",
-    gap: 20,
-    margin: 16,
-    boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+    gap: 0,
+    boxShadow: "0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04)",
   },
-  iconWrap: {
+  header: {
     display: "flex",
-    justifyContent: "center",
+    flexDirection: "column",
+    gap: 4,
   },
   title: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: 700,
-    color: "#1a202c",
-    textAlign: "center",
+    color: "#0f172a",
     margin: 0,
+    lineHeight: 1.3,
   },
   subtitle: {
-    fontSize: 14,
-    color: "#718096",
-    textAlign: "center",
+    fontSize: 13,
+    color: "#64748b",
     margin: 0,
-    marginTop: -12,
+    lineHeight: 1.4,
+  },
+  divider: {
+    height: 1,
+    background: "#e2e8f0",
+    margin: "20px 0",
   },
   sliderSection: {
     display: "flex",
     flexDirection: "column",
     gap: 10,
   },
+  sliderHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
   label: {
-    fontSize: 14,
-    color: "#4a5568",
+    fontSize: 13,
     fontWeight: 600,
+    color: "#0f172a",
+  },
+  countBadge: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: "#2563eb",
+    background: "#eff6ff",
+    border: "1px solid #bfdbfe",
+    borderRadius: 4,
+    padding: "2px 10px",
+    fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
   },
   sliderRow: {
     display: "flex",
     alignItems: "center",
-    gap: 14,
+    gap: 12,
+  },
+  sliderMin: {
+    fontSize: 12,
+    color: "#94a3b8",
+    fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
+    fontWeight: 600,
+  },
+  sliderMax: {
+    fontSize: 12,
+    color: "#94a3b8",
+    fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
+    fontWeight: 600,
   },
   slider: {
     flex: 1,
     height: 6,
-    appearance: "none",
-    background: "#e2e8f0",
+    appearance: "none" as const,
+    WebkitAppearance: "none" as const,
+    background: "linear-gradient(to right, #2563eb 0%, #2563eb 0%, #e2e8f0 0%, #e2e8f0 100%)",
     borderRadius: 3,
     outline: "none",
     cursor: "pointer",
-    accentColor: "#4f8ef7",
+    accentColor: "#2563eb",
   },
-  countCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: "50%",
-    background: "#ebf4ff",
-    color: "#4f8ef7",
+  robotGrid: {
     display: "flex",
-    alignItems: "center",
+    gap: 10,
     justifyContent: "center",
-    fontSize: 18,
-    fontWeight: 700,
+    paddingTop: 4,
   },
-  iconsRow: {
-    display: "flex",
-    gap: 8,
-    justifyContent: "center",
-  },
-  robotIcon: {
-    width: 30,
+  robotDot: {
+    width: 32,
     height: 22,
-    borderRadius: 6,
+    borderRadius: 4,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    color: "#fff",
+    transition: "all 0.2s ease",
   },
   startBtn: {
-    background: "#4f8ef7",
-    color: "#fff",
+    background: "#2563eb",
+    color: "#ffffff",
     border: "none",
-    borderRadius: 8,
-    padding: "14px 24px",
-    fontSize: 16,
-    fontWeight: 700,
+    borderRadius: 4,
+    padding: "12px 24px",
+    fontSize: 14,
+    fontWeight: 600,
     width: "100%",
     transition: "background 0.15s",
     cursor: "pointer",
+    letterSpacing: 0.2,
   },
   mockRow: {
     display: "flex",
+    alignItems: "center",
     justifyContent: "center",
+    gap: 8,
   },
   mockBadge: {
-    fontSize: 11,
+    fontSize: 10,
+    fontWeight: 700,
     color: "#92400e",
     background: "#fef3c7",
-    padding: "4px 12px",
-    borderRadius: 6,
-    fontWeight: 600,
+    border: "1px solid #fcd34d",
+    borderRadius: 3,
+    padding: "2px 8px",
+    letterSpacing: 0.5,
+    fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
   },
   liveBadge: {
+    fontSize: 10,
+    fontWeight: 700,
+    color: "#166534",
+    background: "#dcfce7",
+    border: "1px solid #86efac",
+    borderRadius: 3,
+    padding: "2px 8px",
+    letterSpacing: 0.5,
+    fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
+  },
+  mockHint: {
     fontSize: 11,
-    color: "#22543d",
-    background: "#f0fff4",
-    padding: "4px 12px",
-    borderRadius: 6,
-    fontWeight: 600,
+    color: "#94a3b8",
   },
 };

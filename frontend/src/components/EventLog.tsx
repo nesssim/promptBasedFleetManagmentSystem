@@ -11,10 +11,10 @@ interface EventLogProps {
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  TASK: "#4f8ef7",
-  BATTERY: "#e88d3b",
-  MISSION: "#23a45d",
-  ERROR: "#e53e3e",
+  TASK: "#2563eb",
+  BATTERY: "#d97706",
+  MISSION: "#16a34a",
+  ERROR: "#dc2626",
 };
 
 export function EventLog({ entries }: EventLogProps) {
@@ -45,7 +45,7 @@ export function EventLog({ entries }: EventLogProps) {
         {filtered.map((e, i) => (
           <div key={i} style={styles.entry}>
             <span style={styles.time}>{e.timestamp}</span>
-            <span style={{ ...styles.tag, background: TYPE_COLORS[e.type] || "#718096" }}>
+            <span style={{ ...styles.tag, background: TYPE_COLORS[e.type] || "#64748b" }}>
               {e.type}
             </span>
             <span style={styles.msg}>{e.message}</span>
@@ -61,9 +61,9 @@ const styles: Record<string, React.CSSProperties> = {
   container: {
     display: "flex",
     flexDirection: "column",
-    background: "#f8f9fa",
+    background: "#ffffff",
     border: "1px solid #e2e8f0",
-    borderRadius: 8,
+    borderRadius: 6,
     overflow: "hidden",
     height: "100%",
   },
@@ -76,18 +76,19 @@ const styles: Record<string, React.CSSProperties> = {
   },
   chip: {
     background: "transparent",
-    color: "#718096",
+    color: "#64748b",
     border: "1px solid #e2e8f0",
     borderRadius: 12,
     padding: "2px 10px",
     fontSize: 11,
     cursor: "pointer",
     transition: "all 0.15s",
+    fontFamily: "'Inter', system-ui, sans-serif",
   },
   chipActive: {
-    background: "#4f8ef7",
+    background: "#2563eb",
     color: "#fff",
-    borderColor: "#4f8ef7",
+    borderColor: "#2563eb",
   },
   list: {
     flex: 1,
@@ -100,9 +101,9 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8,
     padding: "3px 12px",
     fontSize: 12,
-    fontFamily: "monospace",
+    fontFamily: "'SF Mono', 'JetBrains Mono', monospace",
   },
-  time: { color: "#a0aec0", minWidth: 60, fontSize: 11 },
+  time: { color: "#64748b", minWidth: 60, fontSize: 11 },
   tag: {
     color: "#fff",
     fontSize: 9,
@@ -112,6 +113,6 @@ const styles: Record<string, React.CSSProperties> = {
     minWidth: 40,
     textAlign: "center" as const,
   },
-  msg: { color: "#1a202c" },
-  empty: { color: "#a0aec0", textAlign: "center", padding: 20, fontSize: 12 },
+  msg: { color: "#0f172a" },
+  empty: { color: "#94a3b8", textAlign: "center", padding: 20, fontSize: 12 },
 };
