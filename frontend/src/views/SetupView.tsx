@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useConfigStore } from "../stores/config";
 import { usePlanStore } from "../stores/plan";
 import { postConfig } from "../api";
+import { colors } from "../theme";
 
 const ROBOT_COLORS = ["#4f8ef7", "#23a45d", "#e88d3b", "#a855f7", "#ec4899", "#14b8a6"];
 
@@ -15,6 +16,10 @@ export function SetupView() {
   const setSessionId = useConfigStore((s) => s.setSessionId);
   const setMockMode = useConfigStore((s) => s.setMockMode);
   const mockMode = useConfigStore((s) => s.mockMode);
+  const provider = useConfigStore((s) => s.provider);
+  const llmReachable = useConfigStore((s) => s.llmReachable);
+  const llmError = useConfigStore((s) => s.llmError);
+  const llmModel = useConfigStore((s) => s.llmModel);
   const setPhase = usePlanStore((s) => s.setPhase);
   const setError = usePlanStore((s) => s.setError);
   const [loading, setLoading] = useState(false);
@@ -34,15 +39,40 @@ export function SetupView() {
     }
   };
 
+  const renderProviderBadge = () => {
+    if (mockMode) {
+      return <span style={styles.mockBadge}>MOCK MODE — no API key required</span>;
+    }
+
+    switch (provider) {
+      case "claude":
+        return <span style={styles.liveBadge}>Live — Claude API connected</span>;
+      case "gemini":
+        return <span style={styles.liveBadge}>Live — Gemini API connected</span>;
+      case "local":
+        if (llmReachable) {
+          const label = llmModel ? `Live — ${llmModel}` : "Live — Local LLM connected";
+          return <span style={styles.liveBadge}>{label}</span>;
+        }
+        return (
+          <span style={styles.offlineBadge}>
+            {llmError || "Local LLM not reachable — start your model server"}
+          </span>
+        );
+      default:
+        return <span style={styles.offlineBadge}>No LLM configured</span>;
+    }
+  };
+
   return (
     <div style={styles.wrapper}>
       <div style={styles.card}>
         <div style={styles.iconWrap}>
           <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-            <rect x="4" y="10" width="32" height="18" rx="4" fill="#4f8ef7" opacity="0.15" />
-            <circle cx="14" cy="22" r="4" fill="#4f8ef7" />
-            <circle cx="26" cy="22" r="4" fill="#4f8ef7" />
-            <rect x="6" y="14" width="28" height="10" rx="2" fill="#4f8ef7" opacity="0.4" />
+            <rect x="4" y="10" width="32" height="18" rx="4" fill={colors.primary} opacity="0.15" />
+            <circle cx="14" cy="22" r="4" fill={colors.primary} />
+            <circle cx="26" cy="22" r="4" fill={colors.primary} />
+            <rect x="6" y="14" width="28" height="10" rx="2" fill={colors.primary} opacity="0.4" />
           </svg>
         </div>
 
@@ -67,7 +97,7 @@ export function SetupView() {
             {Array.from({ length: 6 }, (_, i) => (
               <div key={i} style={{
                 ...styles.robotIcon,
-                background: i < robotCount ? ROBOT_COLORS[i] : "#e2e8f0",
+                background: i < robotCount ? ROBOT_COLORS[i] : colors.border.default,
                 opacity: i < robotCount ? 1 : 0.4,
                 transition: "all 0.2s ease",
               }}>
@@ -90,11 +120,7 @@ export function SetupView() {
         </button>
 
         <div style={styles.mockRow}>
-          {mockMode ? (
-            <span style={styles.mockBadge}>⚙  MOCK MODE — no API key required</span>
-          ) : (
-            <span style={styles.liveBadge}>✓ Live — Claude API connected</span>
-          )}
+          {renderProviderBadge()}
         </div>
       </div>
     </div>
@@ -107,11 +133,11 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    background: "#f8f9fa",
+    background: colors.surface.subtle,
   },
   card: {
-    background: "#ffffff",
-    border: "1px solid #e2e8f0",
+    background: colors.surface.default,
+    border: `1px solid ${colors.border.default}`,
     borderRadius: 12,
     padding: "36px 44px",
     maxWidth: 460,
@@ -129,13 +155,13 @@ const styles: Record<string, React.CSSProperties> = {
   title: {
     fontSize: 24,
     fontWeight: 700,
-    color: "#1a202c",
+    color: colors.text.primary,
     textAlign: "center",
     margin: 0,
   },
   subtitle: {
     fontSize: 14,
-    color: "#718096",
+    color: colors.text.muted,
     textAlign: "center",
     margin: 0,
     marginTop: -12,
@@ -147,7 +173,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   label: {
     fontSize: 14,
-    color: "#4a5568",
+    color: colors.text.secondary,
     fontWeight: 600,
   },
   sliderRow: {
@@ -159,18 +185,18 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     height: 6,
     appearance: "none",
-    background: "#e2e8f0",
+    background: colors.border.default,
     borderRadius: 3,
     outline: "none",
     cursor: "pointer",
-    accentColor: "#4f8ef7",
+    accentColor: colors.primary,
   },
   countCircle: {
     width: 44,
     height: 44,
     borderRadius: "50%",
-    background: "#ebf4ff",
-    color: "#4f8ef7",
+    background: colors.infoBg,
+    color: colors.primary,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -189,18 +215,17 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    color: "#fff",
+    color: colors.primaryForeground,
   },
   startBtn: {
-    background: "#4f8ef7",
-    color: "#fff",
+    background: colors.primary,
+    color: colors.primaryForeground,
     border: "none",
     borderRadius: 8,
     padding: "14px 24px",
     fontSize: 16,
     fontWeight: 700,
     width: "100%",
-    transition: "background 0.15s",
     cursor: "pointer",
   },
   mockRow: {
@@ -209,16 +234,24 @@ const styles: Record<string, React.CSSProperties> = {
   },
   mockBadge: {
     fontSize: 11,
-    color: "#92400e",
-    background: "#fef3c7",
+    color: colors.badge.mock.text,
+    background: colors.badge.mock.bg,
     padding: "4px 12px",
     borderRadius: 6,
     fontWeight: 600,
   },
   liveBadge: {
     fontSize: 11,
-    color: "#22543d",
-    background: "#f0fff4",
+    color: colors.badge.live.text,
+    background: colors.badge.live.bg,
+    padding: "4px 12px",
+    borderRadius: 6,
+    fontWeight: 600,
+  },
+  offlineBadge: {
+    fontSize: 11,
+    color: colors.badge.offline.text,
+    background: colors.badge.offline.bg,
     padding: "4px 12px",
     borderRadius: 6,
     fontWeight: 600,

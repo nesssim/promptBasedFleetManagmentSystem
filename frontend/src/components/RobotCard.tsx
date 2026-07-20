@@ -1,4 +1,5 @@
 import type { RobotState } from "../types";
+import { colors } from "../theme";
 
 interface RobotCardProps {
   robot: RobotState;
@@ -6,17 +7,17 @@ interface RobotCardProps {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  idle:      { label: "Idle",      color: "#a0aec0" },
-  navigating:{ label: "Navigating",color: "#4f8ef7" },
-  working:   { label: "Working",   color: "#e88d3b" },
-  charging:  { label: "Charging",  color: "#23a45d" },
-  error:     { label: "Error",     color: "#e53e3e" },
+  idle:      { label: "Idle",      color: colors.text.faint },
+  navigating:{ label: "Navigating",color: colors.primary },
+  working:   { label: "Working",   color: colors.warning },
+  charging:  { label: "Charging",  color: colors.success },
+  error:     { label: "Error",     color: colors.danger },
 };
 
 export function RobotCard({ robot, color }: RobotCardProps) {
   const cfg = STATUS_CONFIG[robot.status] || STATUS_CONFIG.idle;
   const pct = Math.round(robot.battery);
-  const batColor = pct > 50 ? "#23a45d" : pct > 20 ? "#e88d3b" : "#e53e3e";
+  const batColor = pct > 50 ? colors.success : pct > 20 ? colors.warning : colors.danger;
 
   return (
     <div style={{ ...styles.card, borderLeftColor: color }}>
@@ -51,8 +52,8 @@ export function RobotCard({ robot, color }: RobotCardProps) {
 
 const styles: Record<string, React.CSSProperties> = {
   card: {
-    background: "#f8f9fa",
-    border: "1px solid #e2e8f0",
+    background: colors.surface.subtle,
+    border: `1px solid ${colors.border.default}`,
     borderLeftWidth: 4,
     borderRadius: 8,
     padding: 12,
@@ -65,11 +66,11 @@ const styles: Record<string, React.CSSProperties> = {
   name: { fontSize: 14, fontWeight: 700 },
   badge: { fontSize: 10, padding: "2px 6px", borderRadius: 4, fontWeight: 600 },
   batteryRow: { display: "flex", alignItems: "center", gap: 8 },
-  label: { fontSize: 11, color: "#718096", minWidth: 40 },
-  barOuter: { flex: 1, height: 6, background: "#e2e8f0", borderRadius: 3, overflow: "hidden" },
+  label: { fontSize: 11, color: colors.text.muted, minWidth: 40 },
+  barOuter: { flex: 1, height: 6, background: colors.border.default, borderRadius: 3, overflow: "hidden" },
   barInner: { height: "100%", borderRadius: 3, transition: "width 0.5s ease" },
   detailRow: { display: "flex", gap: 4, fontSize: 11 },
-  value: { color: "#1a202c" },
-  coords: { fontSize: 10, color: "#a0aec0", fontFamily: "monospace" },
-  progress: { fontSize: 11, color: "#718096" },
+  value: { color: colors.text.primary },
+  coords: { fontSize: 10, color: colors.text.faint, fontFamily: "monospace" },
+  progress: { fontSize: 11, color: colors.text.muted },
 };

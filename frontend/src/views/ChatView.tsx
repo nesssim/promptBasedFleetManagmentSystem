@@ -2,17 +2,10 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { shallow } from "zustand/shallow";
 import { usePlanStore } from "../stores/plan";
 import { useConfigStore } from "../stores/config";
-import { postPlan, postCorrect, postGenerate, postLaunch } from "../api";
+import { postPlan, postCorrect, postGenerate, postLaunch, getWslCheck } from "../api";
 import { YardMap } from "../components/YardMap";
+import { colors } from "../theme";
 
-/**
- * View 2: Chat + Plan Visualizer
- * Light theme — white backgrounds, subtle borders, clean typography.
- * 
- * NO static/fake data is ever shown. The YardMap only renders when
- * a real DAG with actual locations exists. In mock mode (no LLM key),
- * the user sees status messages but no fake zones or fake robots.
- */
 export function ChatView() {
   const {
     phase, conversation, currentPlan, currentDag, correctionsRemaining,
@@ -26,52 +19,80 @@ export function ChatView() {
     }),
     shallow
   );
-  const robotCount = useConfigStore((s) => s.robotCount);
   const sessionId = useConfigStore((s) => s.sessionId);
   const mockMode = useConfigStore((s) => s.mockMode);
+  const provider = useConfigStore((s) => s.provider);
+  const llmReachable = useConfigStore((s) => s.llmReachable);
+  const llmError = useConfigStore((s) => s.llmError);
 
   const [missionText, setMissionText] = useState("");
   const [correctionText, setCorrectionText] = useState("");
   const [showCorrection, setShowCorrection] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [wslCheck, setWslCheck] = useState<{ ok: boolean; message: string } | null>(null);
+  const [wslChecking, setWslChecking] = useState(false);
   const chatEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: "smooth" }); }, [conversation]);
 
-  // Only show the YardMap when the DAG has real locations from the LLM (not null)
+  useEffect(() => {
+    if (phase === "dag_ready" && !wslCheck && !wslChecking) {
+      setWslChecking(true);
+      getWslCheck().then((r) => {
+        if (r.wsl_installed && r.ros2_available && r.gazebo_available) {
+          setWslCheck({ ok: true, message: "WSL + ROS2 + Gazebo detected. Ready to launch." });
+        } else {
+          const lines = r.details.filter((d) => d.includes("NOT") || d.includes("not") || d.includes("Install"));
+          setWslCheck({
+            ok: false,
+            message: lines.length > 0 ? lines.join("\n") : "WSL environment incomplete — see details below.",
+          });
+        }
+      }).catch((e) => {
+        setWslCheck({ ok: false, message: `WSL check failed: ${e.message}` });
+      }).finally(() => setWslChecking(false));
+    }
+    if (phase !== "dag_ready") setWslCheck(null);
+  }, [phase, wslCheck, wslChecking]);
+
   const hasRealDag = currentDag !== null && currentDag?.locations != null && Object.keys(currentDag.locations).length > 0;
 
   const handleSend = useCallback(async () => {
     if (!missionText.trim() || loading) return;
+    const text = missionText;
+    setMissionText("");
     setLoading(true);
     setError(null);
-    addMessage({ role: "user", content: missionText, timestamp: Date.now() });
+    addMessage({ role: "user", content: text, timestamp: Date.now() });
     try {
-      const r = await postPlan(missionText, sessionId);
+      const r = await postPlan(text, sessionId);
       setPlan(r.plan as Record<string, unknown>);
       setPhase(r.phase as any);
       setCorrectionsRemaining(r.corrections_remaining);
       addMessage({
         role: "assistant",
         content: r.mock
-          ? `[MOCK MODE] Mission "${missionText}" received. No LLM connected — connect an ANTHROPIC_API_KEY to generate a real plan. The YardMap will show locations once a real DAG is generated.`
+          ? `[MOCK MODE] Mission "${text}" received. No LLM connected — connect an ANTHROPIC_API_KEY to generate a real plan. The YardMap will show locations once a real DAG is generated.`
           : formatPlan(r.plan),
         timestamp: Date.now(),
       });
     } catch (e: any) {
       setError(e.message);
-    } finally { setLoading(false); setMissionText(""); }
+    } finally { setLoading(false); }
   }, [missionText, loading, sessionId, addMessage, setPlan, setPhase, setCorrectionsRemaining, setError]);
 
   const handleRevise = useCallback(async () => {
     if (!correctionText.trim() || loading) return;
+    const text = correctionText;
+    setCorrectionText("");
     setLoading(true);
     setError(null);
     setShowCorrection(false);
-    addMessage({ role: "user", content: correctionText, timestamp: Date.now() });
+    addMessage({ role: "user", content: text, timestamp: Date.now() });
     try {
-      const r = await postCorrect(correctionText, sessionId);
+      const r = await postCorrect(text, sessionId);
       setPlan(r.plan as Record<string, unknown>);
+      setPhase(r.phase as any);
       setCorrectionsRemaining(r.corrections_remaining);
       addMessage({
         role: "assistant",
@@ -81,7 +102,7 @@ export function ChatView() {
         timestamp: Date.now(),
       });
     } catch (e: any) { setError(e.message); }
-    finally { setLoading(false); setCorrectionText(""); }
+    finally { setLoading(false); }
   }, [correctionText, loading, sessionId, addMessage, setPlan, setCorrectionsRemaining, setError]);
 
   const handleAccept = useCallback(async () => {
@@ -92,6 +113,7 @@ export function ChatView() {
       const r = await postGenerate(sessionId);
       setDag(r.dag as any);
       setPhase(r.phase as any);
+      setCorrectionsRemaining(r.corrections_remaining);
       if (!r.dag) {
         addMessage({
           role: "assistant",
@@ -109,11 +131,14 @@ export function ChatView() {
     setError(null);
     try {
       await postLaunch(sessionId);
-    } catch {
+      setPhase("running");
+    } catch (e: any) {
       console.warn("[launch] Failed to launch (expected in mock mode without Gazebo)");
-      // TODO: Show user-facing toast/notification in live mode
+      setError(e?.message || "Launch failed");
+      setPhase("error");
+      setLoading(false);
+      return;
     }
-    setPhase("running");
     setLoading(false);
   }, [loading, sessionId, setError, setPhase]);
 
@@ -130,32 +155,61 @@ export function ChatView() {
         <div style={styles.messages}>
           {conversation.length === 0 && (
             <div style={styles.placeholder}>
-              Describe your mission to begin.
-              <div style={{ color: "#a0aec0", fontSize: 12, marginTop: 4 }}>
+              <div style={styles.placeholderIcon}>
+                <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+                  <rect x="3" y="6" width="30" height="20" rx="4" stroke={colors.border.default} strokeWidth="1.5" fill="none" />
+                  <path d="M3 22l8-5 4 3 8-6 10 6" stroke={colors.border.default} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+              <div style={styles.placeholderTitle}>Describe your mission</div>
+              <div style={styles.placeholderHint}>
                 e.g. "Survey zone A and zone B, then charge"
               </div>
             </div>
           )}
-          {conversation.map((m, i) => (
-            <div key={i} style={{ ...styles.bubble, alignSelf: m.role === "user" ? "flex-end" : "flex-start",
-              background: m.role === "user" ? "#ebf4ff" : "#f8f9fa",
-              color: m.role === "user" ? "#2b6cb0" : "#1a202c",
-              borderBottomRightRadius: m.role === "user" ? 4 : 10,
-              borderBottomLeftRadius: m.role === "assistant" ? 4 : 10,
-              whiteSpace: "pre-wrap" as const,
-            }}>
-              {m.content}
+          {conversation.map((m, i) => {
+            const isUser = m.role === "user";
+            return (
+              <div key={i} style={{
+                ...styles.bubble,
+                alignSelf: isUser ? "flex-end" : "flex-start",
+                ...(isUser ? styles.bubbleUser : styles.bubbleAssistant),
+                whiteSpace: "pre-wrap" as const,
+              }}>
+                {!isUser && <span style={styles.bubbleRole}>Assistant</span>}
+                <div style={styles.bubbleContent}>{m.content}</div>
+              </div>
+            );
+          })}
+          {loading && (
+            <div style={{ ...styles.bubble, ...styles.bubbleAssistant, alignSelf: "flex-start" }}>
+              <span style={styles.bubbleRole}>Assistant</span>
+              <div style={styles.typing}>
+                <span style={styles.typingDot} />
+                <span style={{ ...styles.typingDot, animationDelay: "0.15s" }} />
+                <span style={{ ...styles.typingDot, animationDelay: "0.3s" }} />
+              </div>
             </div>
-          ))}
+          )}
           <div ref={chatEnd} />
         </div>
         <div style={styles.inputArea}>
-          <textarea style={styles.textInput} placeholder="Describe your mission..." rows={2}
-            value={missionText}
-            onChange={(e) => setMissionText(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }}} />
-          <button style={styles.sendBtn} onClick={handleSend} disabled={loading}>Send</button>
-          <span style={styles.chip}>{robotCount} robots</span>
+          {provider === "local" && !llmReachable && (
+            <div style={styles.llmWarning}>
+              Local LLM not reachable — start your model server before sending missions.
+              {llmError && <span style={{ display: "block", fontSize: 10, marginTop: 2, opacity: 0.8 }}>{llmError}</span>}
+            </div>
+          )}
+          <div style={styles.inputRow}>
+            <textarea style={styles.textInput} placeholder="Describe your mission..." rows={2}
+              value={missionText}
+              onChange={(e) => setMissionText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }}} />
+            <button style={{ ...styles.sendBtn, opacity: (!missionText.trim() || loading) ? 0.5 : 1 }}
+              onClick={handleSend} disabled={loading || !missionText.trim()}>
+              {loading ? "..." : "Send"}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -164,36 +218,57 @@ export function ChatView() {
         <div style={styles.planHeader}>
           <span style={styles.planTitle}>Task Plan</span>
           {correctionsRemaining < 3 && (
-            <span style={{ color: "#e88d3b", fontSize: 11 }}>{correctionsRemaining} corrections left</span>
+            <span style={styles.correctionBadge}>{correctionsRemaining} corrections left</span>
           )}
         </div>
 
         {hasRealDag ? (
-          <YardMap dag={currentDag} planned />
+          <div style={styles.mapContainer}>
+            <YardMap dag={currentDag} planned />
+          </div>
         ) : (
-          <div style={styles.emptyMap}>
+          <div style={styles.emptyState}>
             <div style={styles.emptyIcon}>
               <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-                <rect x="6" y="12" width="36" height="22" rx="4" fill="#e2e8f0" />
-                <circle cx="18" cy="26" r="5" fill="#cbd5e0" />
-                <circle cx="30" cy="26" r="5" fill="#cbd5e0" />
+                <rect x="8" y="8" width="32" height="32" rx="4" stroke={colors.border.default} strokeWidth="1.5" fill="none" />
+                <path d="M16 16h16M16 24h12M16 32h8" stroke={colors.border.default} strokeWidth="1.5" strokeLinecap="round" />
+                <circle cx="36" cy="36" r="8" fill={colors.surface.default} stroke={colors.border.default} strokeWidth="1.5" />
+                <path d="M36 33v6M33 36h6" stroke={colors.primary} strokeWidth="1.5" strokeLinecap="round" />
               </svg>
             </div>
-            <div style={styles.emptyText}>
+            <div style={styles.emptyTitle}>
+              {mockMode ? "No Plan Data" : "No Task Plan Yet"}
+            </div>
+            <div style={styles.emptyHint}>
               {mockMode
-                ? "MOCK MODE — No real plan data. Connect ANTHROPIC_API_KEY to generate a mission DAG."
-                : "Send a mission description to generate a task plan."}
+                ? "Connect ANTHROPIC_API_KEY to generate a mission DAG with real tasks and locations."
+                : "Send a mission description to generate a task plan with flows and robot assignments."}
             </div>
           </div>
         )}
 
         <div style={styles.controls}>
           {phase === "dag_ready" ? (
-            <button style={styles.launchBtn} onClick={handleLaunch} disabled={loading}>
-              {loading ? "Launching..." : "🚀  Launch Mission"}
-            </button>
+            wslCheck === null || wslChecking ? (
+              <button style={styles.launchBtn} disabled>
+                {wslChecking ? "Checking environment..." : "Checking environment..."}
+              </button>
+            ) : wslCheck.ok ? (
+              <button style={styles.launchBtn} onClick={handleLaunch} disabled={loading}>
+                {loading ? "Launching..." : "Launch Mission"}
+              </button>
+            ) : (
+              <div style={styles.wslBarrier}>
+                <div style={styles.wslBarrierTitle}>Cannot Launch — Environment Check Failed</div>
+                <pre style={styles.wslBarrierDetail}>{wslCheck.message}</pre>
+                <div style={{ fontSize: 11, color: colors.text.muted, marginTop: 4 }}>
+                  Launch requires WSL 2 + ROS2 Humble + Gazebo inside WSL.
+                  See the project README for setup instructions.
+                </div>
+              </div>
+            )
           ) : (
-            <>
+            <div style={styles.actionRow}>
               <button style={styles.acceptBtn} onClick={handleAccept} disabled={loading || phase === "generating"}>
                 {loading ? "Generating..." : "Accept Plan"}
               </button>
@@ -202,14 +277,14 @@ export function ChatView() {
                 disabled={loading || correctionsRemaining <= 0}>
                 Revise Plan
               </button>
-            </>
+            </div>
           )}
         </div>
         {showCorrection && (
           <div style={styles.correctionArea}>
             <textarea style={styles.correctionInput} placeholder="What should change?"
               rows={2} value={correctionText} onChange={(e) => setCorrectionText(e.target.value)} />
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={styles.correctionActions}>
               <button style={styles.sendRevBtn} onClick={handleRevise}>Send Revision</button>
               <button style={styles.cancelBtn} onClick={() => setShowCorrection(false)}>Cancel</button>
             </div>
@@ -220,44 +295,188 @@ export function ChatView() {
   );
 }
 
-// ── Helpers ──
-
 function formatPlan(plan: Record<string, unknown> | null): string {
   if (!plan) return "No plan generated.";
+
+  const parts: string[] = [];
+
+  // Start with human summary if available
+  const humanSummary = plan.human_summary as string | undefined;
+  if (humanSummary) {
+    parts.push(humanSummary);
+    parts.push("");
+  }
+
+  // Robot assignments in plain language
+  const assignments = plan.robot_assignments as Array<Record<string, unknown>> | undefined;
   const flows = plan.flows as Array<Record<string, unknown>> | undefined;
-  if (!flows || flows.length === 0) return "Plan received. Review the map to the right.";
-  return flows.map((f, i) =>
-    `${i+1}. ${f.description || "Flow"} (${(f.tasks as Array<unknown>).length} tasks, ~${f.estimated_duration_s||"?"}s)`
-  ).join("\n") + `\n\nTotal: ${flows.length} flows, ~${plan.estimated_total_duration_s||"?"}s`;
+  if (assignments && assignments.length > 0) {
+    parts.push("Fleet assignments:");
+    assignments.forEach((a) => {
+      const flow = flows?.find((f) => f.id === a.flow_id);
+      const taskCount = (flow?.tasks as Array<unknown>)?.length || 0;
+      const flowLabel = (flow?.description as string) || a.flow_id;
+      parts.push(`  • ${a.robot_id} — ${flowLabel} (${taskCount} step${taskCount !== 1 ? "s" : ""})`);
+    });
+    parts.push("");
+  }
+
+  // Step-by-step breakdown per robot
+  if (flows && flows.length > 0) {
+    parts.push("Step-by-step plan:");
+    flows.forEach((flow, i) => {
+      const tasks = (flow.tasks || []) as Array<Record<string, unknown>>;
+      const duration = flow.estimated_duration_s || "?";
+      parts.push(`\nFlow ${i + 1}: ${flow.description || "Untitled"} (~${Math.round(Number(duration) / 60)}min)`);
+      tasks.forEach((t, j) => {
+        const loc = String(t.location || "?");
+        const action = String(t.action || t.action_type || "");
+        const actionLabel = action ? ` (${action})` : "";
+        parts.push(`  ${j + 1}. Go to ${loc}${actionLabel}`);
+      });
+    });
+  } else {
+    parts.push("Plan received. Review the map to the right.");
+  }
+
+  // Summary stats
+  const totalDuration = plan.estimated_total_duration_s || "?";
+  const taskCount = flows?.reduce((sum, f) => sum + ((f.tasks as Array<unknown>)?.length || 0), 0) || 0;
+  parts.push(`\n${flows?.length || 0} flows · ${taskCount} steps · ~${Math.round(Number(totalDuration) / 60)} minutes total`);
+
+  const notes = plan.notes as string | undefined;
+  if (notes) parts.push(`\nNote: ${notes}`);
+
+  return parts.join("\n");
 }
 
-// ── Styles ──
-
 const styles: Record<string, React.CSSProperties> = {
-  container: { flex: 1, display: "flex", overflow: "hidden", background: "#ffffff" },
-  chatPanel: { width: "38%", minWidth: 300, display: "flex", flexDirection: "column", borderRight: "1px solid #e2e8f0", background: "#ffffff" },
-  chatHeader: { padding: "14px 18px", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" },
-  chatTitle: { fontSize: 15, fontWeight: 700, color: "#1a202c" },
-  newBtn: { background: "transparent", color: "#718096", border: "1px solid #e2e8f0", borderRadius: 4, padding: "4px 10px", fontSize: 11, cursor: "pointer" },
-  messages: { flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 10 },
-  placeholder: { color: "#a0aec0", textAlign: "center", marginTop: 60, fontSize: 14 },
-  bubble: { padding: "10px 14px", borderRadius: 10, fontSize: 13, lineHeight: 1.5, maxWidth: "85%" },
-  inputArea: { padding: "12px 16px", borderTop: "1px solid #e2e8f0", display: "flex", gap: 8, alignItems: "flex-end", background: "#f8f9fa" },
-  textInput: { flex: 1, background: "#ffffff", color: "#1a202c", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 12px", fontSize: 13, resize: "none", outline: "none" },
-  sendBtn: { background: "#4f8ef7", color: "#fff", border: "none", borderRadius: 8, padding: "10px 18px", fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" },
-  chip: { background: "#f8f9fa", color: "#718096", border: "1px solid #e2e8f0", borderRadius: 12, padding: "4px 10px", fontSize: 11, whiteSpace: "nowrap" },
-  planPanel: { flex: 1, display: "flex", flexDirection: "column", background: "#ffffff" },
-  planHeader: { padding: "14px 18px", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" },
-  planTitle: { fontSize: 15, fontWeight: 700, color: "#1a202c" },
-  controls: { display: "flex", gap: 8, padding: "12px 16px", borderTop: "1px solid #e2e8f0", background: "#f8f9fa" },
-  acceptBtn: { flex: 1, background: "#23a45d", color: "#fff", border: "none", borderRadius: 8, padding: 12, fontSize: 14, fontWeight: 700, cursor: "pointer" },
-  reviseBtn: { flex: 1, background: "#e88d3b", color: "#fff", border: "none", borderRadius: 8, padding: 12, fontSize: 14, fontWeight: 700, cursor: "pointer" },
-  launchBtn: { flex: 1, background: "#4f8ef7", color: "#fff", border: "none", borderRadius: 8, padding: 12, fontSize: 14, fontWeight: 700, cursor: "pointer" },
-  correctionArea: { padding: "12px 16px", borderTop: "1px solid #e2e8f0", display: "flex", flexDirection: "column", gap: 8, background: "#f8f9fa" },
-  correctionInput: { background: "#ffffff", color: "#1a202c", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 12px", fontSize: 13, resize: "none", outline: "none" },
-  sendRevBtn: { background: "#e88d3b", color: "#fff", border: "none", borderRadius: 6, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
-  cancelBtn: { background: "transparent", color: "#718096", border: "1px solid #e2e8f0", borderRadius: 6, padding: "8px 16px", fontSize: 13, cursor: "pointer" },
-  emptyMap: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, background: "#f8f9fa", border: "1px dashed #e2e8f0", borderRadius: 8, margin: 16, minHeight: 260 },
-  emptyIcon: { opacity: 0.5 },
-  emptyText: { color: "#a0aec0", fontSize: 13, textAlign: "center", maxWidth: 320, lineHeight: 1.5 },
+  container: { flex: 1, display: "flex", overflow: "hidden", background: colors.surface.default },
+
+  // ── Chat Panel ──
+  chatPanel: { width: "38%", minWidth: 300, display: "flex", flexDirection: "column", borderRight: `1px solid ${colors.border.default}` },
+  chatHeader: {
+    padding: "12px 20px", borderBottom: `1px solid ${colors.border.default}`,
+    display: "flex", justifyContent: "space-between", alignItems: "center",
+  },
+  chatTitle: { fontSize: 14, fontWeight: 600, color: colors.text.primary },
+  newBtn: {
+    background: "transparent", color: colors.primary, border: `1px solid ${colors.border.default}`,
+    borderRadius: 6, padding: "4px 12px", fontSize: 11, fontWeight: 500, cursor: "pointer",
+  },
+
+  // ── Messages ──
+  messages: { flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 12 },
+  placeholder: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 8, marginTop: -40 },
+  placeholderIcon: { opacity: 0.3, marginBottom: 4 },
+  placeholderTitle: { fontSize: 15, fontWeight: 600, color: colors.text.muted },
+  placeholderHint: { fontSize: 12, color: colors.text.faint },
+
+  bubble: { borderRadius: 12, fontSize: 13, lineHeight: 1.6, maxWidth: "85%", padding: "10px 14px" },
+  bubbleUser: {
+    background: colors.primary,
+    color: colors.primaryForeground,
+    borderBottomRightRadius: 4,
+  },
+  bubbleAssistant: {
+    background: colors.surface.subtle,
+    color: colors.text.primary,
+    border: `1px solid ${colors.border.default}`,
+    borderBottomLeftRadius: 4,
+  },
+  bubbleRole: { fontSize: 10, fontWeight: 600, color: colors.primary, textTransform: "uppercase" as const, letterSpacing: "0.5px", display: "block", marginBottom: 4 },
+  bubbleContent: {},
+
+  typing: { display: "flex", gap: 4, padding: "4px 0" },
+  typingDot: {
+    width: 6, height: 6, borderRadius: "50%", background: colors.text.faint,
+    animation: "pulse 1.2s ease-in-out infinite",
+  },
+
+  // ── Input ──
+  inputArea: {
+    padding: "12px 16px", borderTop: `1px solid ${colors.border.default}`,
+    background: colors.surface.subtle,
+  },
+  inputRow: { display: "flex", gap: 8, alignItems: "flex-end" },
+  textInput: {
+    flex: 1, background: colors.surface.default, color: colors.text.primary,
+    border: `1px solid ${colors.border.default}`, borderRadius: 8,
+    padding: "10px 12px", fontSize: 13, resize: "none", outline: "none",
+    fontFamily: "inherit",
+  },
+  sendBtn: {
+    background: colors.primary, color: colors.primaryForeground, border: "none",
+    borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 600,
+    cursor: "pointer", whiteSpace: "nowrap", transition: "opacity 0.15s",
+  },
+  llmWarning: {
+    background: colors.dangerBg, color: colors.danger,
+    border: `1px solid ${colors.dangerBorder}`, borderRadius: 6,
+    padding: "8px 12px", fontSize: 12, fontWeight: 500, marginBottom: 8,
+  },
+
+  // ── Plan Panel ──
+  planPanel: { flex: 1, display: "flex", flexDirection: "column" },
+  planHeader: {
+    padding: "12px 20px", borderBottom: `1px solid ${colors.border.default}`,
+    display: "flex", justifyContent: "space-between", alignItems: "center",
+  },
+  planTitle: { fontSize: 14, fontWeight: 600, color: colors.text.primary },
+  correctionBadge: { fontSize: 11, fontWeight: 500, color: colors.warning },
+
+  mapContainer: {
+    flex: 1, margin: 12, borderRadius: 8,
+    border: `1px solid ${colors.border.default}`, overflow: "hidden",
+  },
+
+  emptyState: {
+    flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
+    justifyContent: "center", gap: 10, margin: 16,
+  },
+  emptyIcon: { opacity: 0.4, marginBottom: 4 },
+  emptyTitle: { fontSize: 15, fontWeight: 600, color: colors.text.muted },
+  emptyHint: { fontSize: 12, color: colors.text.faint, textAlign: "center", maxWidth: 300, lineHeight: 1.5 },
+
+  controls: {
+    display: "flex", flexDirection: "column", gap: 8,
+    padding: "12px 16px", borderTop: `1px solid ${colors.border.default}`,
+    background: colors.surface.subtle,
+  },
+  actionRow: { display: "flex", gap: 8 },
+  acceptBtn: {
+    flex: 1, background: colors.primary, color: colors.primaryForeground,
+    border: "none", borderRadius: 8, padding: "10px 0", fontSize: 13, fontWeight: 600, cursor: "pointer",
+  },
+  reviseBtn: {
+    flex: 1, background: colors.secondary, color: colors.secondaryForeground,
+    border: "none", borderRadius: 8, padding: "10px 0", fontSize: 13, fontWeight: 600, cursor: "pointer",
+  },
+  launchBtn: {
+    flex: 1, background: colors.primary, color: colors.primaryForeground,
+    border: "none", borderRadius: 8, padding: "10px 0", fontSize: 13, fontWeight: 600, cursor: "pointer",
+  },
+  correctionArea: {
+    padding: "12px 16px", borderTop: `1px solid ${colors.border.default}`,
+    display: "flex", flexDirection: "column", gap: 8, background: colors.surface.subtle,
+  },
+  correctionInput: {
+    background: colors.surface.default, color: colors.text.primary,
+    border: `1px solid ${colors.border.default}`, borderRadius: 8,
+    padding: "10px 12px", fontSize: 13, resize: "none", outline: "none",
+    fontFamily: "inherit",
+  },
+  correctionActions: { display: "flex", gap: 8 },
+  sendRevBtn: {
+    background: colors.secondary, color: colors.secondaryForeground,
+    border: "none", borderRadius: 6, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer",
+  },
+  cancelBtn: {
+    background: "transparent", color: colors.text.muted,
+    border: `1px solid ${colors.border.default}`, borderRadius: 6,
+    padding: "8px 16px", fontSize: 13, cursor: "pointer",
+  },
+  wslBarrier: { background: colors.dangerBg, border: `1px solid ${colors.dangerBorder}`, borderRadius: 8, padding: 12 },
+  wslBarrierTitle: { color: colors.danger, fontSize: 13, fontWeight: 700, marginBottom: 6 },
+  wslBarrierDetail: { color: colors.danger, fontSize: 11, lineHeight: 1.5, whiteSpace: "pre-wrap" as const, fontFamily: "monospace", margin: 0 },
 };

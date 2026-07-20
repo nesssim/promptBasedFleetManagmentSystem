@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useFleetStore } from "../stores/fleet";
+import { usePlanStore } from "../stores/plan";
 import type { WSMessage } from "../types";
 
 /**
@@ -21,6 +22,7 @@ export function useWebSocket(url: string = DEFAULT_WS_URL) {
   const setConnected = useFleetStore((s) => s.setConnected);
   const setRobots = useFleetStore((s) => s.setRobots);
   const setStats = useFleetStore((s) => s.setStats);
+  const setPhase = usePlanStore((s) => s.setPhase);
 
   const processBatch = useCallback(() => {
     const batch = pendingRef.current;
@@ -41,8 +43,13 @@ export function useWebSocket(url: string = DEFAULT_WS_URL) {
           (p.mission_time_s as number) || 0
         );
       }
+    } else if (latest.type === "phase_change" && latest.payload) {
+      const p = latest.payload as Record<string, unknown>;
+      if (typeof p.phase === "string") {
+        setPhase(p.phase as any);
+      }
     }
-  }, [setRobots, setStats]);
+  }, [setRobots, setStats, setPhase]);
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;

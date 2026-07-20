@@ -1,11 +1,8 @@
 """ROS 2 → WebSocket bridge.
 
-Runs as a background daemon thread inside the FastAPI process.
-Subscribes to /fleet_status and forwards framed messages to
-connected WebSocket clients via an asyncio.Queue.
-
-This is the ONLY ROS 2 integration in the backend.
-All other ROS 2 communication (param set, topic echo) uses CLI subprocess calls.
+UNUSED — This module is not imported anywhere in the application.
+It was developed as a placeholder for future ROS 2 integration.
+See ADR for decision to defer ROS 2 bridge until simulation is stable.
 """
 
 import asyncio

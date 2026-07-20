@@ -8,7 +8,6 @@ Category 1: LLM Tool Functions (called by Claude via Anthropic tool-use API)
 
 Category 2: Backend Utility Functions (called directly by orchestrator)
   - create_task_dag(): Builds complete validated DAG from Phase 2 response
-  - get_spawn_positions(): Computes N non-overlapping spawn positions
 """
 
 import json
@@ -169,25 +168,6 @@ def create_task_dag(plan: dict) -> dict:
         "metadata": plan.get("metadata", {}),
     }
     return dag
-
-
-def get_spawn_positions(N: int) -> list[dict]:
-    """Compute N non-overlapping spawn positions in the Gazebo world.
-
-    Pure geometry — no I/O.
-    Uses existing launch pattern positions extended to 6.
-    """
-    base = [
-        {"x": -4.0, "y": 0.0},   # robot_1
-        {"x": -3.0, "y": -2.0},  # robot_2
-        {"x": -4.0, "y": 2.0},   # robot_3
-        {"x": -3.0, "y": 2.0},   # robot_4
-        {"x": -2.0, "y": 0.0},   # robot_5
-        {"x": -2.0, "y": -2.0},  # robot_6
-    ]
-    if N < 1 or N > 6:
-        raise ValueError(f"N must be 1-6, got {N}")
-    return base[:N]
 
 
 # ═══════════════════════════════════════════════════════════════

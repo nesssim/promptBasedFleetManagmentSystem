@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { colors } from "../theme";
 
 interface LogEntry {
   timestamp: string;
@@ -11,10 +12,10 @@ interface EventLogProps {
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  TASK: "#4f8ef7",
-  BATTERY: "#e88d3b",
-  MISSION: "#23a45d",
-  ERROR: "#e53e3e",
+  TASK: colors.primary,
+  BATTERY: colors.warning,
+  MISSION: colors.success,
+  ERROR: colors.danger,
 };
 
 export function EventLog({ entries }: EventLogProps) {
@@ -45,7 +46,7 @@ export function EventLog({ entries }: EventLogProps) {
         {filtered.map((e, i) => (
           <div key={i} style={styles.entry}>
             <span style={styles.time}>{e.timestamp}</span>
-            <span style={{ ...styles.tag, background: TYPE_COLORS[e.type] || "#718096" }}>
+            <span style={{ ...styles.tag, background: TYPE_COLORS[e.type] || colors.text.muted }}>
               {e.type}
             </span>
             <span style={styles.msg}>{e.message}</span>
@@ -61,8 +62,8 @@ const styles: Record<string, React.CSSProperties> = {
   container: {
     display: "flex",
     flexDirection: "column",
-    background: "#f8f9fa",
-    border: "1px solid #e2e8f0",
+    background: colors.surface.subtle,
+    border: `1px solid ${colors.border.default}`,
     borderRadius: 8,
     overflow: "hidden",
     height: "100%",
@@ -71,23 +72,22 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     gap: 6,
     padding: "8px 12px",
-    borderBottom: "1px solid #e2e8f0",
-    background: "#ffffff",
+    borderBottom: `1px solid ${colors.border.default}`,
+    background: colors.surface.default,
   },
   chip: {
     background: "transparent",
-    color: "#718096",
-    border: "1px solid #e2e8f0",
+    color: colors.text.muted,
+    border: `1px solid ${colors.border.default}`,
     borderRadius: 12,
     padding: "2px 10px",
     fontSize: 11,
     cursor: "pointer",
-    transition: "all 0.15s",
   },
   chipActive: {
-    background: "#4f8ef7",
-    color: "#fff",
-    borderColor: "#4f8ef7",
+    background: colors.primary,
+    color: colors.primaryForeground,
+    borderColor: colors.primary,
   },
   list: {
     flex: 1,
@@ -102,9 +102,9 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     fontFamily: "monospace",
   },
-  time: { color: "#a0aec0", minWidth: 60, fontSize: 11 },
+  time: { color: colors.text.faint, minWidth: 60, fontSize: 11 },
   tag: {
-    color: "#fff",
+    color: colors.primaryForeground,
     fontSize: 9,
     padding: "1px 5px",
     borderRadius: 3,
@@ -112,6 +112,6 @@ const styles: Record<string, React.CSSProperties> = {
     minWidth: 40,
     textAlign: "center" as const,
   },
-  msg: { color: "#1a202c" },
-  empty: { color: "#a0aec0", textAlign: "center", padding: 20, fontSize: 12 },
+  msg: { color: colors.text.primary },
+  empty: { color: colors.text.faint, textAlign: "center", padding: 20, fontSize: 12 },
 };

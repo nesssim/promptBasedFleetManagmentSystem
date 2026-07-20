@@ -1,6 +1,6 @@
 """Shared Pydantic models, enums, and dataclasses."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import Optional
@@ -30,16 +30,16 @@ class SessionState:
 
     phase: MissionPhase = MissionPhase.IDLE
     robot_count: int = 3
-    conversation_history: list = field(default_factory=list)
+    conversation_history: list[dict[str, str]] = field(default_factory=list)
     current_plan: Optional[dict] = None
     current_dag: Optional[dict] = None
     mission_id: Optional[str] = None
     correction_count: int = 0
-    created_at: datetime = field(default_factory=datetime.now)
-    last_accessed: datetime = field(default_factory=datetime.now)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    last_accessed: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def touch(self) -> None:
-        self.last_accessed = datetime.now()
+        self.last_accessed = datetime.now(timezone.utc)
 
     def reset(self) -> None:
         """Return session to IDLE with defaults."""

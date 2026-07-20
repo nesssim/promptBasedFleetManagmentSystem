@@ -84,13 +84,3 @@ export interface WSMessage {
   timestamp: number;
   payload: Record<string, unknown>;
 }
-
-/** Health check response */
-export interface HealthStatus {
-  status: "ok" | "degraded" | "error";
-  gzserver_running: boolean;
-  coordinator_running: boolean;
-  robot_count: number;
-  last_heartbeat: number | null;
-  phase: MissionPhase;
-}

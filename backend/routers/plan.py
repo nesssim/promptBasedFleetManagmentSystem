@@ -14,6 +14,8 @@ from typing import Optional
 from ..models import MissionPhase
 from ..session import session_store
 from ..services.rate_limiter import rate_limiter
+from ..services.llm import LLMService
+from .. import persistence
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +61,7 @@ async def plan_mission(request: Request, body: PlanRequest):
 
     if not await session_store.transition(
         sid,
-        from_phases=[MissionPhase.IDLE, MissionPhase.PLAN_READY],
+        from_phases=[MissionPhase.IDLE, MissionPhase.PLAN_READY, MissionPhase.ERROR],
         to=MissionPhase.PLANNING,
     ):
         raise HTTPException(
@@ -70,17 +72,31 @@ async def plan_mission(request: Request, body: PlanRequest):
 
     mock_mode = getattr(request.app.state, "mock_mode", True)
 
+    plan_data = None
     if not mock_mode:
-        # TODO: Call LLM Phase 1 via llm_service.phase1_analyst()
-        pass
+        llm_service: LLMService = request.app.state.llm_service
+        try:
+            plan_data = await llm_service.phase1_analyst(
+                body.mission, session.robot_count, session.conversation_history
+            )
+        except Exception as e:
+            logger.error("LLM Phase 1 failed: %s", e)
+            await session_store.transition(
+                sid,
+                from_phases=[MissionPhase.PLANNING],
+                to=MissionPhase.IDLE,
+            )
+            raise HTTPException(503, "LLM service unavailable. Please retry.")
 
-    # Store minimal mission context (NO fake zones, NO fake flows)
-    session.current_plan = None
+    session.current_plan = plan_data
     session.conversation_history.append({"role": "user", "content": body.mission})
     session.conversation_history.append(
-        {"role": "assistant", "content": "[Plan not available — no LLM connected]"}
+        {"role": "assistant", "content": str(plan_data) if plan_data else "[Plan not available — no LLM connected]"}
     )
     session.correction_count = 0
+
+    await persistence.append_chat(sid, "user", body.mission)
+    await persistence.append_chat(sid, "assistant", str(plan_data) if plan_data else "[Plan not available — no LLM connected]")
 
     await session_store.transition(
         sid,
@@ -88,10 +104,14 @@ async def plan_mission(request: Request, body: PlanRequest):
         to=MissionPhase.PLAN_READY,
     )
 
+    await persistence.save_session_meta(sid, session.phase.value, session.robot_count, mock_mode)
+    if not mock_mode:
+        await persistence.save_plan(sid, {"mission": body.mission, "current_plan": session.current_plan})
+
     return PlanResponse(
         session_id=sid,
         phase=session.phase.value,
-        plan=None,
+        plan=plan_data,
         corrections_remaining=3,
         mock=mock_mode,
     )
@@ -115,7 +135,7 @@ async def correct_plan(request: Request, body: CorrectRequest):
 
     if not await session_store.transition(
         sid,
-        from_phases=[MissionPhase.PLAN_READY],
+        from_phases=[MissionPhase.PLAN_READY, MissionPhase.ERROR],
         to=MissionPhase.PLANNING,
     ):
         raise HTTPException(
@@ -125,16 +145,33 @@ async def correct_plan(request: Request, body: CorrectRequest):
 
     mock_mode = getattr(request.app.state, "mock_mode", True)
 
+    plan_data = None
     if not mock_mode:
-        # TODO: Re-run LLM Phase 1 with correction
-        pass
+        llm_service: LLMService = request.app.state.llm_service
+        try:
+            plan_data = await llm_service.correct_plan(
+                body.correction, session.robot_count, session.conversation_history
+            )
+        except Exception as e:
+            logger.error("LLM correction failed: %s", e)
+            await session_store.transition(
+                sid,
+                from_phases=[MissionPhase.PLANNING],
+                to=MissionPhase.IDLE,
+            )
+            raise HTTPException(503, "LLM service unavailable. Please retry.")
 
     session.correction_count += 1
-    session.current_plan = None
+    session.current_plan = plan_data
     session.conversation_history.append({"role": "user", "content": f"Correction: {body.correction}"})
     session.conversation_history.append(
-        {"role": "assistant", "content": "[Plan not available — no LLM connected]"}
+        {"role": "assistant", "content": str(plan_data) if plan_data else "[Plan not available — no LLM connected]"}
     )
+
+    await persistence.append_chat(sid, "user", f"Correction: {body.correction}")
+    await persistence.append_chat(sid, "assistant", "[Plan not available — no LLM connected]")
+    if not mock_mode:
+        await persistence.append_decision(sid, f"Correction #{session.correction_count}: {body.correction}")
 
     await session_store.transition(
         sid,
@@ -142,10 +179,12 @@ async def correct_plan(request: Request, body: CorrectRequest):
         to=MissionPhase.PLAN_READY,
     )
 
+    await persistence.save_session_meta(sid, session.phase.value, session.robot_count, mock_mode)
+
     return PlanResponse(
         session_id=sid,
         phase=session.phase.value,
-        plan=None,
+        plan=plan_data,
         corrections_remaining=3 - session.correction_count,
         mock=mock_mode,
     )
@@ -163,7 +202,7 @@ async def generate_dag(request: Request, body: GenerateRequest):
 
     if not await session_store.transition(
         sid,
-        from_phases=[MissionPhase.PLAN_READY],
+        from_phases=[MissionPhase.PLAN_READY, MissionPhase.ERROR],
         to=MissionPhase.GENERATING,
     ):
         raise HTTPException(
@@ -174,13 +213,23 @@ async def generate_dag(request: Request, body: GenerateRequest):
 
     mock_mode = getattr(request.app.state, "mock_mode", True)
 
+    dag_data = None
     if not mock_mode:
-        # TODO: Call LLM Phase 2 via llm_service.phase2_dag(), then
-        # validate via dag_validator.create_task_dag()
-        pass
+        llm_service: LLMService = request.app.state.llm_service
+        try:
+            dag_data = await llm_service.phase2_dag(
+                session.current_plan, session.robot_count
+            )
+        except Exception as e:
+            logger.error("LLM Phase 2 failed: %s", e)
+            await session_store.transition(
+                sid,
+                from_phases=[MissionPhase.GENERATING],
+                to=MissionPhase.PLAN_READY,
+            )
+            raise HTTPException(503, "LLM service unavailable. Please retry.")
 
-    # In mock mode: store NO fake DAG data, just null
-    session.current_dag = None
+    session.current_dag = dag_data
 
     await session_store.transition(
         sid,
@@ -188,11 +237,22 @@ async def generate_dag(request: Request, body: GenerateRequest):
         to=MissionPhase.DAG_READY,
     )
 
+    await persistence.save_session_meta(sid, session.phase.value, session.robot_count, mock_mode)
+    if session.current_plan or session.current_dag:
+        await persistence.save_plan(sid, {
+            "mission": session.conversation_history[0]["content"] if session.conversation_history else "",
+            "current_plan": session.current_plan,
+            "current_dag": session.current_dag,
+            "robot_count": session.robot_count,
+        })
+    if not mock_mode:
+        await persistence.append_decision(sid, "DAG generated")
+
     return PlanResponse(
         session_id=sid,
         phase=session.phase.value,
         plan=None,
-        dag=None,
+        dag=dag_data,
         corrections_remaining=3 - session.correction_count,
         mock=mock_mode,
     )

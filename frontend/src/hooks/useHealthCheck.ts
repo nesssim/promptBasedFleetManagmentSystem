@@ -12,7 +12,7 @@ interface HealthState {
 /**
  * Polls GET /health every 2 seconds.
  * Returns health state and a flag for the connection indicator.
- * Also syncs mock_mode from backend into the config store.
+ * Also syncs mock_mode, provider, and LLM reachability from backend into the config store.
  */
 export function useHealthCheck() {
   const [health, setHealth] = useState<HealthState>({
@@ -21,6 +21,8 @@ export function useHealthCheck() {
     lastHeartbeat: null,
   });
   const setMockMode = useConfigStore((s) => s.setMockMode);
+  const setProvider = useConfigStore((s) => s.setProvider);
+  const setLlmStatus = useConfigStore((s) => s.setLlmStatus);
   const intervalRef = useRef<ReturnType<typeof setInterval>>();
 
   useEffect(() => {
@@ -35,8 +37,17 @@ export function useHealthCheck() {
         if (res.mock_mode !== undefined) {
           setMockMode(res.mock_mode);
         }
+        if (res.provider) {
+          setProvider(res.provider);
+        }
+        setLlmStatus(
+          res.llm_reachable ?? false,
+          res.llm_error ?? null,
+          res.llm_model ?? null
+        );
       } catch {
         setHealth((prev) => ({ ...prev, status: "error" }));
+        setLlmStatus(false, "Backend unreachable", null);
       }
     };
 
@@ -44,7 +55,7 @@ export function useHealthCheck() {
     intervalRef.current = setInterval(check, 2000);
 
     return () => clearInterval(intervalRef.current);
-  }, [setMockMode]);
+  }, [setMockMode, setProvider, setLlmStatus]);
 
   return health;
 }

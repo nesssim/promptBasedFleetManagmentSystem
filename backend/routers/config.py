@@ -2,8 +2,11 @@
 
 from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel, Field
+from typing import Optional
 
 from ..session import session_store
+from ..models import MissionPhase
+from .. import persistence
 
 router = APIRouter()
 
@@ -38,3 +41,21 @@ async def set_config(request: Request, body: ConfigRequest):
         phase=session.phase.value,
         mock=mock_mode,
     )
+
+
+class SessionRestore(BaseModel):
+    session_id: str
+    phase: str
+    robot_count: int
+
+
+@router.get("/session/{session_id}", response_model=SessionRestore)
+async def restore_session(session_id: str):
+    """Return current session state for frontend page-reload restore.
+
+    Returns 404 if session expired or never existed.
+    """
+    info = await session_store.get_info(session_id)
+    if not info:
+        raise HTTPException(404, "Session not found or expired")
+    return SessionRestore(**info)

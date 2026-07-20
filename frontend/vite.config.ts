@@ -15,6 +15,10 @@ export default defineConfig({
         target: "ws://localhost:5000",
         ws: true,
       },
+      "/status": {
+        target: "ws://localhost:5000",
+        ws: true,
+      },
     },
   },
 });

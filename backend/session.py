@@ -23,10 +23,10 @@ class SessionStore:
         MissionPhase.PLAN_READY: [MissionPhase.GENERATING, MissionPhase.PLANNING],
         MissionPhase.GENERATING: [MissionPhase.DAG_READY],
         MissionPhase.DAG_READY: [MissionPhase.LAUNCHING],
-        MissionPhase.LAUNCHING: [MissionPhase.RUNNING, MissionPhase.IDLE],
+        MissionPhase.LAUNCHING: [MissionPhase.RUNNING, MissionPhase.IDLE, MissionPhase.ERROR],
         MissionPhase.RUNNING: [MissionPhase.IDLE],
         MissionPhase.COMPLETE: [MissionPhase.IDLE],
-        MissionPhase.ERROR: [MissionPhase.IDLE],
+        MissionPhase.ERROR: [MissionPhase.IDLE, MissionPhase.PLANNING, MissionPhase.GENERATING, MissionPhase.LAUNCHING],
     }
 
     def __init__(self):
@@ -94,15 +94,28 @@ class SessionStore:
             session.touch()
             return True
 
-    def get(self, session_id: str) -> Optional[SessionState]:
+    async def get(self, session_id: str) -> Optional[SessionState]:
         """Get session without creating. Does not touch (read-only)."""
-        return self._sessions.get(session_id)
+        async with self._lock:
+            return self._sessions.get(session_id)
 
     async def get_phase(self, session_id: str) -> Optional[MissionPhase]:
         """Get current phase for a session."""
         async with self._lock:
             session = self._sessions.get(session_id)
             return session.phase if session else None
+
+    async def get_info(self, session_id: str) -> Optional[dict]:
+        """Return public session info for frontend restore."""
+        async with self._lock:
+            state = self._sessions.get(session_id)
+            if not state:
+                return None
+            return {
+                "session_id": session_id,
+                "phase": state.phase.value,
+                "robot_count": state.robot_count,
+            }
 
     async def get_all(self) -> list[tuple[str, SessionState]]:
         """Return all sessions (for admin/debug)."""
@@ -116,6 +129,25 @@ class SessionStore:
             state = self._sessions.get(session_id)
             if state:
                 state.reset()
+
+    async def create(self, session_id: str, robot_count: int = 3) -> SessionState:
+        """Create a new session with a known ID. Raises if ID already exists."""
+        async with self._lock:
+            if session_id in self._sessions:
+                raise RuntimeError(f"Session {session_id} already exists")
+            if len(self._sessions) >= MAX_SESSIONS:
+                raise RuntimeError("Maximum session limit reached")
+            state = SessionState(robot_count=robot_count)
+            self._sessions[session_id] = state
+            return state
+
+    async def set_phase(self, session_id: str, phase: MissionPhase) -> None:
+        """Unconditionally set the phase (used during restore)."""
+        async with self._lock:
+            state = self._sessions.get(session_id)
+            if state:
+                state.phase = phase
+                state.touch()
 
     async def transition_to_error(self, session_id: str) -> None:
         """Transition session to ERROR state unconditionally."""

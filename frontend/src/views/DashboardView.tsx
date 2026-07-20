@@ -7,8 +7,9 @@ import { postKill } from "../api";
 import { RobotCard } from "../components/RobotCard";
 import { YardMap } from "../components/YardMap";
 import { EventLog } from "../components/EventLog";
+import { colors } from "../theme";
 
-const COLORS = ["#4f8ef7", "#23a45d", "#e88d3b", "#a855f7", "#ec4899", "#14b8a6"];
+const COLORS = ["#03045e", "#023e8a", "#0077b6", "#0096c7", "#03045e", "#023e8a"];
 
 /**
  * View 4: Live Mission Dashboard
@@ -85,16 +86,16 @@ export function DashboardView() {
           <SummaryRow label="Time" value={hasRobots ? `${missionTime.toFixed(1)}s` : "—"} />
           <SummaryRow label="Active" value={hasRobots ? `${robots.filter(r=>r.status!=="idle").length} / ${robots.length}` : "—"} />
           <SummaryRow label="Status" value={connected ? "Connected" : "Disconnected"}
-            valueColor={connected ? "#23a45d" : "#e53e3e"} />
+            valueColor={connected ? colors.status.connected : colors.status.disconnected} />
         </div>
         {hasRealDag ? (
           <YardMap robots={robots} dag={currentDag} planned={false} />
         ) : (
           <div style={styles.emptyMap}>
             <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-              <rect x="5" y="10" width="30" height="18" rx="3" fill="#e2e8f0" />
-              <circle cx="15" cy="22" r="4" fill="#cbd5e0" />
-              <circle cx="25" cy="22" r="4" fill="#cbd5e0" />
+              <rect x="5" y="10" width="30" height="18" rx="3" fill={colors.border.default} />
+              <circle cx="15" cy="22" r="4" fill={colors.border.default} />
+              <circle cx="25" cy="22" r="4" fill={colors.border.default} />
             </svg>
             <div style={styles.emptyMapText}>
               {mockMode
@@ -133,24 +134,24 @@ function SummaryRow({ label, value, valueColor }: { label: string; value: string
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  container: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "#f8f9fa", position: "relative" },
-  completeBanner: { background: "#23a45d", color: "#fff", textAlign: "center", padding: "10px 16px", fontSize: 15, fontWeight: 700 },
-  cardsSection: { padding: "12px 16px", borderBottom: "1px solid #e2e8f0", overflowX: "auto", background: "#ffffff" },
+  container: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: colors.surface.subtle, position: "relative" },
+  completeBanner: { background: colors.success, color: colors.primaryForeground, textAlign: "center", padding: "10px 16px", fontSize: 15, fontWeight: 700 },
+  cardsSection: { padding: "12px 16px", borderBottom: `1px solid ${colors.border.default}`, overflowX: "auto", background: colors.surface.default },
   cardsRow: { display: "flex", gap: 10 },
   waitingRobots: { display: "flex", alignItems: "center", gap: 12, justifyContent: "center", padding: "16px 0" },
-  waitingPulse: { width: 10, height: 10, borderRadius: "50%", background: "#cbd5e0", animation: "pulse 2s infinite" },
-  waitingText: { color: "#a0aec0", fontSize: 13, fontStyle: "italic" },
+  waitingPulse: { width: 10, height: 10, borderRadius: "50%", background: colors.border.default, animation: "pulse 2s infinite" },
+  waitingText: { color: colors.text.faint, fontSize: 13, fontStyle: "italic" },
   middle: { flex: 1, display: "flex", overflow: "hidden" },
   summary: {
     width: 180, minWidth: 180, padding: 16, display: "flex", flexDirection: "column", gap: 12,
-    background: "#ffffff", borderRight: "1px solid #e2e8f0",
+    background: colors.surface.default, borderRight: `1px solid ${colors.border.default}`,
   },
   summaryRow: { display: "flex", justifyContent: "space-between", alignItems: "center" },
-  summaryLabel: { color: "#718096", fontSize: 12 },
-  summaryValue: { color: "#1a202c", fontSize: 13, fontWeight: 600 },
-  emptyMap: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "#f8f9fa" },
-  emptyMapText: { color: "#a0aec0", fontSize: 13, fontStyle: "italic" },
-  logSection: { height: 180, minHeight: 180, borderTop: "1px solid #e2e8f0", padding: "8px 16px", background: "#ffffff" },
+  summaryLabel: { color: colors.text.muted, fontSize: 12 },
+  summaryValue: { color: colors.text.primary, fontSize: 13, fontWeight: 600 },
+  emptyMap: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: colors.surface.subtle },
+  emptyMapText: { color: colors.text.faint, fontSize: 13, fontStyle: "italic" },
+  logSection: { height: 180, minHeight: 180, borderTop: `1px solid ${colors.border.default}`, padding: "8px 16px", background: colors.surface.default },
   newMissionArea: { position: "absolute", bottom: 200, left: "50%", transform: "translateX(-50%)" },
-  newBtn: { background: "#4f8ef7", color: "#fff", border: "none", borderRadius: 8, padding: "12px 24px", fontSize: 14, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 8px rgba(79,142,247,0.3)" },
+  newBtn: { background: colors.primary, color: colors.primaryForeground, border: "none", borderRadius: 8, padding: "12px 24px", fontSize: 14, fontWeight: 700, cursor: "pointer", boxShadow: `0 2px 8px ${colors.primary}40` },
 };
