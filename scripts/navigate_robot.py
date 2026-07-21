@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Navigate a TurtleBot3 to a target (x, y) using simple proportional control.
 
-Usage (inside WSL):
+Usage:
     python3 navigate_robot.py --robot-id robot_1 --target-x 9.5 --target-y 8.0
 """
 

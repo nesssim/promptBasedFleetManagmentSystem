@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { shallow } from "zustand/shallow";
 import { usePlanStore } from "../stores/plan";
 import { useConfigStore } from "../stores/config";
-import { postPlan, postCorrect, postGenerate, postLaunch, getWslCheck } from "../api";
+import { postPlan, postCorrect, postGenerate, postLaunch, getEnvCheck } from "../api";
 import { YardMap } from "../components/YardMap";
 import { colors } from "../theme";
 
@@ -29,31 +29,31 @@ export function ChatView() {
   const [correctionText, setCorrectionText] = useState("");
   const [showCorrection, setShowCorrection] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [wslCheck, setWslCheck] = useState<{ ok: boolean; message: string } | null>(null);
-  const [wslChecking, setWslChecking] = useState(false);
+  const [envCheck, setEnvCheck] = useState<{ ok: boolean; message: string } | null>(null);
+  const [envChecking, setEnvChecking] = useState(false);
   const chatEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: "smooth" }); }, [conversation]);
 
   useEffect(() => {
-    if (phase === "dag_ready" && !wslCheck && !wslChecking) {
-      setWslChecking(true);
-      getWslCheck().then((r) => {
-        if (r.wsl_installed && r.ros2_available && r.gazebo_available) {
-          setWslCheck({ ok: true, message: "WSL + ROS2 + Gazebo detected. Ready to launch." });
+    if (phase === "dag_ready" && !envCheck && !envChecking) {
+      setEnvChecking(true);
+      getEnvCheck().then((r) => {
+        if (r.ros2_available && r.gazebo_available && r.turtlebot3_available) {
+          setEnvCheck({ ok: true, message: "ROS2 + Gazebo + TurtleBot3 detected. Ready to launch." });
         } else {
-          const lines = r.details.filter((d) => d.includes("NOT") || d.includes("not") || d.includes("Install"));
-          setWslCheck({
+          const lines = r.details.filter((d) => d.includes("not found") || d.includes("Not found"));
+          setEnvCheck({
             ok: false,
-            message: lines.length > 0 ? lines.join("\n") : "WSL environment incomplete — see details below.",
+            message: lines.length > 0 ? lines.join("\n") : "Environment incomplete — see details below.",
           });
         }
       }).catch((e) => {
-        setWslCheck({ ok: false, message: `WSL check failed: ${e.message}` });
-      }).finally(() => setWslChecking(false));
+        setEnvCheck({ ok: false, message: `Environment check failed: ${e.message}` });
+      }).finally(() => setEnvChecking(false));
     }
-    if (phase !== "dag_ready") setWslCheck(null);
-  }, [phase, wslCheck, wslChecking]);
+    if (phase !== "dag_ready") setEnvCheck(null);
+  }, [phase, envCheck, envChecking]);
 
   const hasRealDag = currentDag !== null && currentDag?.locations != null && Object.keys(currentDag.locations).length > 0;
 
@@ -249,20 +249,20 @@ export function ChatView() {
 
         <div style={styles.controls}>
           {phase === "dag_ready" ? (
-            wslCheck === null || wslChecking ? (
+            envCheck === null || envChecking ? (
               <button style={styles.launchBtn} disabled>
-                {wslChecking ? "Checking environment..." : "Checking environment..."}
+                {envChecking ? "Checking environment..." : "Checking environment..."}
               </button>
-            ) : wslCheck.ok ? (
+            ) : envCheck.ok ? (
               <button style={styles.launchBtn} onClick={handleLaunch} disabled={loading}>
                 {loading ? "Launching..." : "Launch Mission"}
               </button>
             ) : (
-              <div style={styles.wslBarrier}>
-                <div style={styles.wslBarrierTitle}>Cannot Launch — Environment Check Failed</div>
-                <pre style={styles.wslBarrierDetail}>{wslCheck.message}</pre>
+              <div style={styles.envBarrier}>
+                <div style={styles.envBarrierTitle}>Cannot Launch — Environment Check Failed</div>
+                <pre style={styles.envBarrierDetail}>{envCheck.message}</pre>
                 <div style={{ fontSize: 11, color: colors.text.muted, marginTop: 4 }}>
-                  Launch requires WSL 2 + ROS2 Humble + Gazebo inside WSL.
+                  Launch requires ROS2 Humble + Gazebo + TurtleBot3 packages.
                   See the project README for setup instructions.
                 </div>
               </div>
@@ -476,7 +476,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: `1px solid ${colors.border.default}`, borderRadius: 6,
     padding: "8px 16px", fontSize: 13, cursor: "pointer",
   },
-  wslBarrier: { background: colors.dangerBg, border: `1px solid ${colors.dangerBorder}`, borderRadius: 8, padding: 12 },
-  wslBarrierTitle: { color: colors.danger, fontSize: 13, fontWeight: 700, marginBottom: 6 },
-  wslBarrierDetail: { color: colors.danger, fontSize: 11, lineHeight: 1.5, whiteSpace: "pre-wrap" as const, fontFamily: "monospace", margin: 0 },
+  envBarrier: { background: colors.dangerBg, border: `1px solid ${colors.dangerBorder}`, borderRadius: 8, padding: 12 },
+  envBarrierTitle: { color: colors.danger, fontSize: 13, fontWeight: 700, marginBottom: 6 },
+  envBarrierDetail: { color: colors.danger, fontSize: 11, lineHeight: 1.5, whiteSpace: "pre-wrap" as const, fontFamily: "monospace", margin: 0 },
 };

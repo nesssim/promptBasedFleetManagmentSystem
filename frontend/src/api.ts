@@ -215,18 +215,16 @@ export async function updateLocations(data: LocationsData): Promise<LocationsDat
   });
 }
 
-/** Check WSL availability for launch */
-export interface WslCheckResult {
-  wsl_installed: boolean;
-  wsl_version: string | null;
-  distro: string | null;
+/** Check environment availability for launch */
+export interface EnvCheckResult {
   ros2_available: boolean;
   gazebo_available: boolean;
+  turtlebot3_available: boolean;
   details: string[];
 }
 
-export async function getWslCheck(): Promise<WslCheckResult> {
-  return request("/system/wsl-check");
+export async function getEnvCheck(): Promise<EnvCheckResult> {
+  return request("/system/env-check");
 }
 
 /** Get persistent user preferences */

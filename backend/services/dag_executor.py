@@ -4,7 +4,7 @@ After Gazebo is launched and robots are spawned, this module executes
 the DAG by navigating each robot to task locations in dependency order.
 
 Navigation uses a proportional controller (scripts/navigate_robot.py)
-running inside WSL with rclpy.
+running natively via bash.
 
 Usage (called from launch.py after successful spawn):
     executor = DAGExecutor(dag, launcher)
@@ -16,18 +16,14 @@ import json
 import logging
 import math
 import os
-import platform
 import subprocess
 import time
 from collections import defaultdict
 from typing import Callable, Optional
 
-from .wsl import get_wsl_path, wsl_path_to_linux
-from .gazebo import _wsl_bash_cmd, BASE_SPAWN_POSITIONS
+from .gazebo import BASE_SPAWN_POSITIONS
 
 logger = logging.getLogger(__name__)
-
-_IS_WINDOWS = platform.system() == "Windows"
 
 # Paths
 _SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "scripts")
@@ -40,7 +36,7 @@ class DAGExecutor:
     Handles:
     - Dependency resolution across robots
     - Sequential task execution per robot
-    - Navigation via WSL rclpy script
+    - Navigation via rclpy script
     - Non-navigate tasks (charge, weigh, dock) simulated with sleep
     """
 
@@ -73,22 +69,16 @@ class DAGExecutor:
                 self.robot_queues[robot].append(task)
 
     async def run(self) -> dict:
-        """Execute the full DAG. Returns summary of results.
-
-        Each robot's tasks run in parallel. Within each robot,
-        tasks run sequentially respecting depends_on constraints.
-        """
+        """Execute the full DAG. Returns summary of results."""
         logger.info(
             "DAGExecutor starting: %d tasks across %d robots",
             len(self.tasks_by_id), len(self.robot_queues),
         )
 
-        # Launch one coroutine per robot
         robot_tasks = []
         for robot_id in sorted(self.robot_queues.keys()):
             robot_tasks.append(self._run_robot_tasks(robot_id))
 
-        # Wait for all robots (or cancellation)
         results = await asyncio.gather(*robot_tasks, return_exceptions=True)
 
         summary = {
@@ -122,7 +112,6 @@ class DAGExecutor:
                 logger.info("DAGExecutor cancelled — stopping %s", robot_id)
                 break
 
-            # Wait for depends_on to complete (may be on other robots)
             deps = task.get("depends_on", [])
             while deps and not self._cancelled:
                 unmet = [d for d in deps if d not in self.completed_tasks]
@@ -182,9 +171,8 @@ class DAGExecutor:
         if task_type == "navigate":
             return await self._navigate_to(robot_id, location)
         elif task_type in ("charge", "weigh", "dock", "undock"):
-            # Simulate non-navigate tasks with a delay
             logger.info("[%s] Simulating %s for %ds at %s", robot_id, task_type, duration, location)
-            await asyncio.sleep(min(duration, 5))  # cap at 5s for demo
+            await asyncio.sleep(min(duration, 5))
             return {"action": task_type, "location": location, "simulated": True}
         else:
             logger.warning("[%s] Unknown task type: %s", robot_id, task_type)
@@ -192,7 +180,7 @@ class DAGExecutor:
             return {"action": task_type, "location": location, "simulated": True}
 
     async def _navigate_to(self, robot_id: str, location_name: str) -> dict:
-        """Navigate robot to a named location using the WSL navigation script."""
+        """Navigate robot to a named location using the navigation script."""
         if location_name not in self.locations:
             raise ValueError(f"Unknown location: {location_name}")
 
@@ -200,7 +188,6 @@ class DAGExecutor:
         target_x = target["x"]
         target_y = target["y"]
 
-        # Current position
         pos = self.robot_positions.get(robot_id, {"x": 0.0, "y": 0.0})
         dist = math.sqrt((target_x - pos["x"]) ** 2 + (target_y - pos["y"]) ** 2)
 
@@ -213,24 +200,23 @@ class DAGExecutor:
             logger.info("[%s] Already at %s", robot_id, location_name)
             return {"location": location_name, "distance": dist}
 
-        # Build WSL command to run navigate_robot.py
-        wsl_script_path = wsl_path_to_linux(os.path.abspath(_NAVIGATE_SCRIPT))
+        # Run navigate_robot.py directly via bash
         nav_cmd = (
             f"source /opt/ros/humble/setup.bash && "
             f"export TURTLEBOT3_MODEL=burger && "
-            f"python3 {wsl_script_path} "
+            f"python3 {_NAVIGATE_SCRIPT} "
             f"--robot-id {robot_id} "
             f"--target-x {target_x} "
             f"--target-y {target_y}"
         )
-        nav_args = _wsl_bash_cmd(nav_cmd)
+        nav_args = ["bash", "-lc", nav_cmd]
         logger.info("[%s] Navigation command: %s", robot_id, nav_args)
 
         def _run_nav():
             return subprocess.run(
                 nav_args,
                 capture_output=True,
-                timeout=120,  # 2 min max per navigation
+                timeout=120,
             )
 
         result = await asyncio.to_thread(_run_nav)
@@ -239,7 +225,6 @@ class DAGExecutor:
             stderr = result.stderr.decode(errors="replace") if result.stderr else ""
             logger.warning("[%s] Navigation script returned %d: %s", robot_id, result.returncode, stderr)
 
-        # Update tracked position
         self.robot_positions[robot_id] = {"x": target_x, "y": target_y}
 
         return {"location": location_name, "distance": dist}
