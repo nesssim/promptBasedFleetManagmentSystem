@@ -395,8 +395,6 @@ class GeminiProvider(LLMProvider):
                     wait = 2 ** attempt
                     await asyncio.sleep(wait)
                     continue
-                if attempt >= 2:
-                    raise
                 contents.append({
                     "role": "user",
                     "parts": [{"text": f"The previous call failed: {e}. Please provide a simpler response."}],

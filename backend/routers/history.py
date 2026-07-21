@@ -1,7 +1,6 @@
 """History and session persistence endpoints."""
 
 import logging
-import uuid
 
 from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel, Field

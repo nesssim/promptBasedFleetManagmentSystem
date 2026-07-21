@@ -14,14 +14,7 @@ export type MissionPhase =
   | "complete"
   | "error";
 
-export type RobotStatus =
-  | "idle"
-  | "navigating"
-  | "working"
-  | "charging"
-  | "error";
-
-export type WSMessageType =
+type WSMessageType =
   | "fleet_status"
   | "spawn_progress"
   | "phase_change"
@@ -59,22 +52,13 @@ export interface DAGSpec {
 /** Current state of a single robot */
 export interface RobotState {
   id: string;
-  status: RobotStatus;
+  status: string;
   battery: number;
   x: number;
   y: number;
   current_task: string;
   completed_tasks: number;
   total_tasks: number;
-}
-
-/** Aggregate fleet status */
-export interface FleetStatus {
-  robots: RobotState[];
-  tasks_completed: number;
-  tasks_total: number;
-  mission_phase: string;
-  mission_time_s: number;
 }
 
 /** Framed WebSocket message */

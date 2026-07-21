@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef } from "react";
 import type { DAGSpec, RobotState } from "../types";
 import { colors } from "../theme";
 

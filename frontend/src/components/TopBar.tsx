@@ -1,4 +1,3 @@
-import { useCallback } from "react";
 import { usePlanStore } from "../stores/plan";
 import { postKill, postConfig, updatePrefs } from "../api";
 import { useConfigStore } from "../stores/config";

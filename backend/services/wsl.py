@@ -10,7 +10,6 @@ This module resolves the full path using multiple strategies:
 3. ``cmd.exe /c where wsl`` — uses Windows' own PATH resolution
 """
 
-import asyncio
 import logging
 import os
 import platform

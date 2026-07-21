@@ -17,9 +17,7 @@ export default function App() {
   const error = usePlanStore((s) => s.error);
   const setPhase = usePlanStore((s) => s.setPhase);
   const sessionId = useConfigStore((s) => s.sessionId);
-  const setSessionId = useConfigStore((s) => s.setSessionId);
   const setRobotCount = useConfigStore((s) => s.setRobotCount);
-  const setMockMode = useConfigStore((s) => s.setMockMode);
   const showHistory = useUIStore((s) => s.showHistory);
 
   useHealthCheck();

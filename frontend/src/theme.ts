@@ -66,32 +66,3 @@ export const colors = {
     error: "#dc2626",
   },
 } as const;
-
-export const shadows = {
-  sm: "0 1px 2px rgba(0,0,0,0.05)",
-  md: "0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)",
-  lg: "0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1)",
-  xl: "0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)",
-} as const;
-
-export const radii = {
-  sm: 4,
-  md: 6,
-  lg: 8,
-  xl: 12,
-  full: 9999,
-} as const;
-
-export const spacing = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
-  xxl: 24,
-} as const;
-
-export const font = {
-  family: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-  mono: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
-} as const;

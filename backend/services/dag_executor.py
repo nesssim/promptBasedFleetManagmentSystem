@@ -23,6 +23,7 @@ from collections import defaultdict
 from typing import Callable, Optional
 
 from .wsl import get_wsl_path, wsl_path_to_linux
+from .gazebo import _wsl_bash_cmd, BASE_SPAWN_POSITIONS
 
 logger = logging.getLogger(__name__)
 
@@ -31,24 +32,6 @@ _IS_WINDOWS = platform.system() == "Windows"
 # Paths
 _SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "scripts")
 _NAVIGATE_SCRIPT = os.path.join(_SCRIPT_DIR, "navigate_robot.py")
-
-# Spawn positions (must match gazebo.py)
-SPAWN_POSITIONS = [
-    {"x": -4.0, "y": 0.0},   # robot_1
-    {"x": -3.0, "y": -2.0},  # robot_2
-    {"x": -4.0, "y": 2.0},   # robot_3
-    {"x": -3.0, "y": 2.0},   # robot_4
-    {"x": -2.0, "y": 0.0},   # robot_5
-    {"x": -2.0, "y": -2.0},  # robot_6
-]
-
-
-def _wsl_bash_cmd(shell_cmd: str) -> list[str]:
-    """Build wsl.exe -- bash -lc '...' command."""
-    wsl_exe = get_wsl_path()
-    if not wsl_exe:
-        raise FileNotFoundError("WSL executable not found")
-    return [wsl_exe, "--", "bash", "-lc", shell_cmd]
 
 
 class DAGExecutor:
@@ -79,8 +62,8 @@ class DAGExecutor:
         # Current positions: robot_N -> {x, y}
         self.robot_positions: dict[str, dict] = {}
         for i in range(1, robot_count + 1):
-            if i - 1 < len(SPAWN_POSITIONS):
-                self.robot_positions[f"robot_{i}"] = dict(SPAWN_POSITIONS[i - 1])
+            if i - 1 < len(BASE_SPAWN_POSITIONS):
+                self.robot_positions[f"robot_{i}"] = dict(BASE_SPAWN_POSITIONS[i - 1])
 
         # Build per-robot task queues (topological order preserved)
         self.robot_queues: dict[str, list[dict]] = defaultdict(list)

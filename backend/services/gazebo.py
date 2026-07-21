@@ -23,7 +23,7 @@ import platform
 import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
-from typing import Callable, Optional
+from typing import Optional
 
 from .process_manager import (
     track_pid,
@@ -154,25 +154,6 @@ class GazeboLauncher:
         self.port: Optional[int] = None
         self.gzserver_process: Optional[subprocess.Popen] = None
         self.robot_processes: list[dict] = []
-        self._progress_callbacks: list[Callable] = []
-
-    def on_progress(self, callback: Callable) -> None:
-        """Register a callback for spawn progress events.
-
-        Callback receives: dict with current, total, status, robot_id
-        """
-        self._progress_callbacks.append(callback)
-
-    async def _emit_progress(self, current: int, total: int, status: str, robot_id: str = "") -> None:
-        """Emit spawn progress to all registered callbacks."""
-        event = {
-            "current": current,
-            "total": total,
-            "status": status,
-            "robot_id": robot_id,
-        }
-        for cb in self._progress_callbacks:
-            await cb(event)
 
     async def launch(self, robot_count: int) -> int:
         """Full Gazebo launch sequence.
@@ -263,14 +244,11 @@ class GazeboLauncher:
         # Step 5: Spawn robots sequentially
         positions = get_spawn_positions(robot_count)
         for i, pos in enumerate(positions, start=1):
-            await self._emit_progress(i - 1, robot_count, "spawning", f"robot_{i}")
             try:
                 await self._spawn_robot(i, pos)
                 logger.info("robot_%s spawned at (%s, %s)", i, pos['x'], pos['y'])
-                await self._emit_progress(i, robot_count, "ok", f"robot_{i}")
             except Exception as e:
                 logger.info("robot_%s spawn failed: %s", i, e)
-                await self._emit_progress(i, robot_count, "failed", f"robot_{i}")
 
             # 2s delay between spawns (prevents Gazebo entity spawner deadlock)
             if i < robot_count:
@@ -332,23 +310,3 @@ class GazeboLauncher:
         if result.returncode != 0:
             error_msg = result.stderr.decode(errors="replace") if result.stderr else "unknown error"
             raise RuntimeError(f"spawn_entity for robot_{n} failed: {error_msg}")
-
-    async def kill(self) -> None:
-        """Kill all spawned processes for this mission."""
-        import signal
-        for entry in self.robot_processes:
-            pid = entry.get("pid")
-            if pid:
-                try:
-                    os.kill(pid, signal.SIGTERM)
-                except (OSError, ProcessLookupError):
-                    pass
-        self.robot_processes.clear()
-
-        if self.gzserver_process:
-            self.gzserver_process.terminate()
-            try:
-                await asyncio.to_thread(self.gzserver_process.wait, timeout=5.0)
-            except Exception:
-                self.gzserver_process.kill()
-            self.gzserver_process = None

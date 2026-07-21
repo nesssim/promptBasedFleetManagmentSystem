@@ -2,10 +2,7 @@
 
 import asyncio
 import logging
-import uuid
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from enum import Enum
 from typing import Optional
 
 from .models import MissionPhase, SessionState
@@ -99,12 +96,6 @@ class SessionStore:
         async with self._lock:
             return self._sessions.get(session_id)
 
-    async def get_phase(self, session_id: str) -> Optional[MissionPhase]:
-        """Get current phase for a session."""
-        async with self._lock:
-            session = self._sessions.get(session_id)
-            return session.phase if session else None
-
     async def get_info(self, session_id: str) -> Optional[dict]:
         """Return public session info for frontend restore."""
         async with self._lock:
@@ -116,11 +107,6 @@ class SessionStore:
                 "phase": state.phase.value,
                 "robot_count": state.robot_count,
             }
-
-    async def get_all(self) -> list[tuple[str, SessionState]]:
-        """Return all sessions (for admin/debug)."""
-        async with self._lock:
-            return list(self._sessions.items())
 
 
     async def reset(self, session_id: str) -> None:
@@ -148,14 +134,6 @@ class SessionStore:
             if state:
                 state.phase = phase
                 state.touch()
-
-    async def transition_to_error(self, session_id: str) -> None:
-        """Transition session to ERROR state unconditionally."""
-        await self.transition(
-            session_id,
-            from_phases=[p for p in MissionPhase if p != MissionPhase.IDLE],
-            to=MissionPhase.ERROR,
-        )
 
 
 # Global singleton
